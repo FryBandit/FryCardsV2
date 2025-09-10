@@ -5,6 +5,7 @@ import CardDisplay from './components/CardDisplay';
 import LoadingSpinner from './components/LoadingSpinner';
 import ErrorDisplay from './components/ErrorDisplay';
 import { SparklesIcon } from './components/icons/SparklesIcon';
+import SetSelector from './components/SetSelector';
 
 // --- Theme Implementation Start ---
 
@@ -82,14 +83,10 @@ const ThemeSwitcher: React.FC<ThemeSwitcherProps> = ({ currentTheme, themes, set
         <div className="absolute right-0 w-48 mt-2 origin-top-right bg-brand-surface rounded-md shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-50">
           <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="options-menu">
             {themes.map((theme) => (
-              <a
+              <button
                 key={theme.key}
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault();
-                  handleThemeChange(theme.key);
-                }}
-                className={`block px-4 py-2 text-sm ${
+                onClick={() => handleThemeChange(theme.key)}
+                className={`w-full text-left block px-4 py-2 text-sm ${
                   currentTheme === theme.key
                     ? 'font-bold text-brand-primary'
                     : 'text-brand-text'
@@ -97,7 +94,7 @@ const ThemeSwitcher: React.FC<ThemeSwitcherProps> = ({ currentTheme, themes, set
                 role="menuitem"
               >
                 {theme.name}
-              </a>
+              </button>
             ))}
           </div>
         </div>
@@ -112,24 +109,23 @@ const App: React.FC = () => {
   const [card, setCard] = useState<CardData | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [theme, setTheme] = useState<string>('nightdrive');
+  const [theme, setTheme] = useState<string>(() => {
+    // Initialize state from the pre-loaded theme attribute to prevent flicker
+    return document.documentElement.getAttribute('data-theme') || 'nightdrive';
+  });
+  const [sets, setSets] = useState<string[]>([]);
+  const [selectedSet, setSelectedSet] = useState<string>('All Sets');
 
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('fry-cards-theme');
-    const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const defaultTheme = savedTheme || (systemPrefersDark ? 'nightdrive' : 'daybreak');
-    
-    if (themes.some(t => t.key === defaultTheme)) {
-      setTheme(defaultTheme);
-    } else {
-      setTheme('nightdrive');
-    }
-  }, []);
-
+  // This effect syncs React state changes to the DOM and localStorage
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('fry-cards-theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    const uniqueSets = [...new Set(CARDS.map(c => c.set))].sort();
+    setSets(uniqueSets);
+  }, []);
 
 
   const preloadMedia = (url: string): Promise<void> => {
@@ -152,9 +148,20 @@ const App: React.FC = () => {
   const handleDrawCard = useCallback(async () => {
     setIsLoading(true);
     setError(null);
+    setCard(null); // Clear previous card immediately
 
     try {
-      const randomCard = CARDS[Math.floor(Math.random() * CARDS.length)];
+      const cardPool = selectedSet === 'All Sets'
+        ? CARDS
+        : CARDS.filter(c => c.set === selectedSet);
+
+      if (cardPool.length === 0) {
+        setError(`No cards found in the "${selectedSet}" set.`);
+        setIsLoading(false);
+        return;
+      }
+
+      const randomCard = cardPool[Math.floor(Math.random() * cardPool.length)];
       await preloadMedia(randomCard.imageUrl);
       setCard(randomCard);
     } catch (e) {
@@ -164,7 +171,7 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [selectedSet]);
 
   return (
     <div className="min-h-screen bg-brand-bg text-brand-text font-sans flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8 transition-colors duration-300">
@@ -182,20 +189,30 @@ const App: React.FC = () => {
         </div>
 
         <main className="w-full flex flex-col items-center justify-center flex-grow mt-4">
-          <div className="w-full max-w-sm h-[32rem] mb-8">
+          <div className="w-full max-w-xs sm:max-w-sm h-[28rem] sm:h-[32rem] mb-8">
             {isLoading && <LoadingSpinner />}
             {error && <ErrorDisplay message={error} />}
             {!isLoading && !error && <CardDisplay card={card} />}
           </div>
-
-          <button
-            onClick={handleDrawCard}
-            disabled={isLoading}
-            className="relative inline-flex items-center justify-center px-8 py-4 text-lg font-bold text-white transition-all duration-300 bg-brand-secondary rounded-lg shadow-lg hover:shadow-glow-secondary focus:outline-none focus:ring-4 focus:ring-brand-secondary/50 disabled:bg-brand-card disabled:text-brand-text/50 disabled:cursor-not-allowed disabled:shadow-none"
-          >
-            <SparklesIcon className="w-6 h-6 mr-3 animate-pulse" />
-            {isLoading ? 'Drawing...' : 'Draw a Card'}
-          </button>
+          
+          <div className="flex items-center justify-center gap-4">
+            <button
+              onClick={handleDrawCard}
+              disabled={isLoading}
+              className="relative inline-flex items-center justify-center px-8 py-4 text-lg font-bold text-white transition-all duration-300 bg-brand-secondary rounded-lg shadow-lg hover:shadow-glow-secondary focus:outline-none focus:ring-4 focus:ring-brand-secondary/50 disabled:bg-brand-card disabled:text-brand-text/50 disabled:cursor-not-allowed disabled:shadow-none"
+            >
+              <SparklesIcon className="w-6 h-6 mr-3 animate-pulse" />
+              {isLoading ? 'Drawing...' : 'Draw a Card'}
+            </button>
+            <SetSelector
+              sets={sets}
+              selectedSet={selectedSet}
+              onSetChange={(set) => {
+                setSelectedSet(set);
+                setCard(null); // Clear card on set change
+              }}
+            />
+          </div>
         </main>
       </div>
     </div>

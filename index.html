@@ -52,6 +52,25 @@
       }
     </style>
     <script>
+      // IIFE to set theme before React loads, preventing a flicker
+      (function() {
+        try {
+          const savedTheme = localStorage.getItem('fry-cards-theme');
+          const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          const theme = savedTheme || (systemPrefersDark ? 'nightdrive' : 'daybreak');
+          const validThemes = ['nightdrive', 'daybreak', 'arcane'];
+          if (validThemes.includes(theme)) {
+              document.documentElement.setAttribute('data-theme', theme);
+          } else {
+              document.documentElement.setAttribute('data-theme', 'nightdrive');
+          }
+        } catch (e) {
+          // Fails gracefully
+          document.documentElement.setAttribute('data-theme', 'nightdrive');
+        }
+      })();
+    </script>
+    <script>
       tailwind.config = {
         theme: {
           extend: {
@@ -65,6 +84,17 @@
               'brand-accent': 'var(--color-accent)',
               'brand-success': 'var(--color-success)',
               'brand-danger': 'var(--color-danger)',
+
+              'type-unit': '#dc2626',
+              'type-location': '#16a34a',
+              'type-event': '#2563eb',
+              'type-artifact': '#9333ea',
+
+              'rarity-common': '#a9a9a9',
+              'rarity-uncommon': '#10b981',
+              'rarity-rare': '#3b82f6',
+              'rarity-super-rare': '#8b5cf6',
+              'rarity-mythic': '#f59e0b',
             },
             fontFamily: {
               'sans': ['var(--font-sans)', 'sans-serif'],
@@ -75,26 +105,29 @@
               'glow-secondary': '0 0 15px 5px rgba(187, 154, 247, 0.3)',
             },
             animation: {
-              'pulse-glow-primary': 'pulse-glow-primary 3s ease-in-out infinite',
-              'pulse-glow-secondary': 'pulse-glow-secondary 3s ease-in-out infinite',
-              'pulse-glow-accent': 'pulse-glow-accent 3s ease-in-out infinite',
+              'pulse-glow-rare': 'pulse-glow-rare 3s ease-in-out infinite',
+              'pulse-glow-super-rare': 'pulse-glow-super-rare 3s ease-in-out infinite',
+              'pulse-glow-mythic': 'pulse-glow-mythic 3s ease-in-out infinite',
               'holographic-sheen': 'holographic-sheen 4s linear infinite',
               'floating-particles': 'floating-particles 20s linear infinite',
               'card-breath': 'card-breath 6s ease-in-out infinite',
               'shimmer-border': 'shimmer-border 4s ease-in-out infinite',
+              'card-draw': 'card-draw-animation 0.5s ease-out forwards',
+              'lightning-flash': 'lightning-flash 2.5s linear infinite',
+              'divine-glow': 'divine-glow 4s ease-in-out infinite',
             },
             keyframes: {
-              'pulse-glow-primary': {
-                '0%, 100%': { boxShadow: '0 0 15px 5px rgba(122, 162, 247, 0.3)' },
-                '50%': { boxShadow: '0 0 25px 10px rgba(122, 162, 247, 0.5)' },
+              'pulse-glow-rare': {
+                '0%, 100%': { boxShadow: '0 0 15px 5px rgba(59, 130, 246, 0.3)' },
+                '50%': { boxShadow: '0 0 25px 10px rgba(59, 130, 246, 0.5)' },
               },
-              'pulse-glow-secondary': {
-                '0%, 100%': { boxShadow: '0 0 15px 5px rgba(187, 154, 247, 0.3)' },
-                '50%': { boxShadow: '0 0 25px 10px rgba(187, 154, 247, 0.5)' },
+              'pulse-glow-super-rare': {
+                '0%, 100%': { boxShadow: '0 0 15px 5px rgba(139, 92, 246, 0.3)' },
+                '50%': { boxShadow: '0 0 25px 10px rgba(139, 92, 246, 0.5)' },
               },
-              'pulse-glow-accent': {
-                '0%, 100%': { boxShadow: '0 0 15px 5px rgba(255, 158, 100, 0.3)' },
-                '50%': { boxShadow: '0 0 25px 10px rgba(255, 158, 100, 0.5)' },
+              'pulse-glow-mythic': {
+                '0%, 100%': { boxShadow: '0 0 15px 5px rgba(245, 158, 11, 0.3)' },
+                '50%': { boxShadow: '0 0 25px 10px rgba(245, 158, 11, 0.5)' },
               },
               'holographic-sheen': {
                   '0%': { backgroundPosition: '-200% 0' },
@@ -113,7 +146,35 @@
               'shimmer-border': {
                 '0%, 100%': { backgroundPosition: '0% 50%' },
                 '50%': { backgroundPosition: '100% 50%' },
-              }
+              },
+              'lightning-flash': {
+                '0%, 100%, 8%, 49%, 57%': {
+                  boxShadow: '0 0 4px 2px rgba(139, 92, 246, 0.3)',
+                },
+                '5%': {
+                  boxShadow: '0 0 10px 5px rgba(59, 130, 246, 0.8)',
+                },
+                '6%': {
+                  boxShadow: '0 0 4px 2px rgba(139, 92, 246, 0.3)',
+                },
+                '7%': {
+                  boxShadow: '0 0 14px 7px rgba(245, 158, 11, 0.9)',
+                },
+                '50%': {
+                  boxShadow: '0 0 12px 6px rgba(139, 92, 246, 0.8)',
+                },
+                '56%': {
+                  boxShadow: '0 0 4px 2px rgba(139, 92, 246, 0.3)',
+                },
+              },
+              'card-draw-animation': {
+                '0%': { opacity: 0, transform: 'scale(0.95) translateY(10px)' },
+                '100%': { opacity: 1, transform: 'scale(1) translateY(0)' },
+              },
+              'divine-glow': {
+                '0%, 100%': { textShadow: '0 0 8px #f59e0b, 0 0 16px #f59e0b, 0 0 24px #8b5cf6' },
+                '50%': { textShadow: '0 0 12px #f59e0b, 0 0 24px #f59e0b, 0 0 36px #8b5cf6' },
+              },
             }
           }
         }
