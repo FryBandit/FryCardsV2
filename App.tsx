@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback } from 'react';
 import { CardData } from './types';
 import { CARDS } from './constants';
@@ -10,16 +9,45 @@ import { SparklesIcon } from './components/icons/SparklesIcon';
 const App: React.FC = () => {
   const [card, setCard] = useState<CardData | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error] = useState<string | null>(null); // Error state kept for future-proofing, but not used with static data
+  const [error, setError] = useState<string | null>(null);
+
+  const preloadMedia = (url: string): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if (url.endsWith('.mp4')) {
+        const video = document.createElement('video');
+        video.src = url;
+        video.oncanplaythrough = () => resolve();
+        video.onerror = () => reject(new Error(`Video failed to load: ${url}`));
+        video.load();
+      } else {
+        const img = new Image();
+        img.src = url;
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error(`Image failed to load: ${url}`));
+      }
+    });
+  };
 
   const handleDrawCard = useCallback(async () => {
     setIsLoading(true);
-    // Give a little delay for a smoother UX, even though it's instant
-    setTimeout(() => {
+    setError(null);
+
+    try {
+      // Pick a random card from the deck
       const randomCard = CARDS[Math.floor(Math.random() * CARDS.length)];
+
+      // Preload the image or video for a smooth reveal
+      await preloadMedia(randomCard.imageUrl);
+
       setCard(randomCard);
+
+    } catch (e) {
+      console.error(e);
+      const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred while loading the card media.';
+      setError(errorMessage);
+    } finally {
       setIsLoading(false);
-    }, 300);
+    }
   }, []);
 
   return (
@@ -27,11 +55,8 @@ const App: React.FC = () => {
       <div className="w-full max-w-7xl mx-auto flex flex-col items-center">
         <header className="text-center mb-6">
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-serif font-bold text-transparent bg-clip-text bg-gradient-to-r from-brand-primary to-brand-secondary mb-2">
-            Aetherium Card Forge
+            Fry Cards
           </h1>
-          <p className="text-lg text-brand-text/80 max-w-2xl">
-            Harness the power of Gemini to generate unique trading cards from the realms of fantasy.
-          </p>
         </header>
 
         <main className="w-full flex flex-col items-center justify-center flex-grow mt-4">

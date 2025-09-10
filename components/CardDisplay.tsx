@@ -12,12 +12,12 @@ const cardTypeStyles: Record<CardType, { border: string; bg: string; text: strin
   [CardType.Artifact]: { border: 'border-brand-accent', bg: 'bg-brand-accent/10', text: 'text-brand-accent' },
 };
 
-const rarityStyles: Record<Rarity, { text: string; bg: string }> = {
-    [Rarity.Common]: { text: 'text-brand-text/80', bg: 'bg-brand-text/10' },
-    [Rarity.Uncommon]: { text: 'text-brand-success', bg: 'bg-brand-success/10' },
-    [Rarity.Rare]: { text: 'text-brand-primary', bg: 'bg-brand-primary/10' },
-    [Rarity.SuperRare]: { text: 'text-brand-secondary', bg: 'bg-brand-secondary/10' },
-    [Rarity.Mythic]: { text: 'text-brand-accent', bg: 'bg-brand-accent/10' },
+const rarityStyles: Record<Rarity, { text: string; bg: string; border?: string }> = {
+    [Rarity.Common]: { text: 'text-brand-text/80', bg: 'bg-brand-text/10', border: 'border-brand-card' },
+    [Rarity.Uncommon]: { text: 'text-brand-success', bg: 'bg-brand-success/10', border: 'border-brand-success' },
+    [Rarity.Rare]: { text: 'text-brand-primary', bg: 'bg-brand-primary/10', border: 'border-brand-primary' },
+    [Rarity.SuperRare]: { text: 'text-brand-secondary', bg: 'bg-brand-secondary/10', border: 'border-brand-secondary' },
+    [Rarity.Mythic]: { text: 'text-brand-accent', bg: 'bg-brand-accent/10', border: 'border-brand-accent' },
     [Rarity.Divine]: { text: 'text-transparent bg-clip-text bg-gradient-to-r from-brand-secondary to-brand-accent', bg: 'bg-gradient-to-r from-brand-secondary/10 to-brand-accent/10' },
 };
 
@@ -27,7 +27,7 @@ const PlaceholderCard: React.FC = () => (
         <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-brand-card/70 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
-        <h3 className="font-serif text-2xl text-brand-text/80">Card Forge Awaits</h3>
+        <h3 className="font-serif text-2xl text-brand-text/80">Draw Your Card</h3>
         <p className="text-brand-text/60 mt-2">Click "Draw a Card" to bring a creation to life.</p>
     </div>
 );
@@ -37,9 +37,8 @@ const CardContent: React.FC<{ card: CardData }> = ({ card }) => {
   const rarityStyle = rarityStyles[card.rarity];
   const isVideo = card.imageUrl.endsWith('.mp4');
 
-  return (
-    <div className={`relative w-full h-full rounded-2xl border-2 ${typeStyle.border} shadow-2xl shadow-black/50 flex flex-col overflow-hidden text-white`}>
-      
+  const cardInnerContent = (
+    <>
       {/* Background Image/Video */}
       {isVideo ? (
         <video 
@@ -93,6 +92,22 @@ const CardContent: React.FC<{ card: CardData }> = ({ card }) => {
             </div>
         </footer>
       </div>
+    </>
+  );
+
+  if (card.rarity === Rarity.Divine) {
+    return (
+      <div className="relative w-full h-full rounded-2xl p-[2px] bg-gradient-to-br from-brand-secondary via-brand-accent to-brand-primary shadow-2xl shadow-black/50">
+          <div className="relative w-full h-full rounded-[14px] flex flex-col overflow-hidden text-white">
+              {cardInnerContent}
+          </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`relative w-full h-full rounded-2xl border-2 ${rarityStyle.border} shadow-2xl shadow-black/50 flex flex-col overflow-hidden text-white`}>
+      {cardInnerContent}
     </div>
   );
 };
