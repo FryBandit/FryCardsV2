@@ -32,14 +32,46 @@ const PlaceholderCard: React.FC = () => (
     </div>
 );
 
+const Particles: React.FC<{ rarity: Rarity }> = ({ rarity }) => {
+    const particleCount = rarity === Rarity.Mythic ? 20 : 40;
+    const particles = Array.from({ length: particleCount });
+
+    return (
+        <div className="absolute inset-0 overflow-hidden z-[15] pointer-events-none" aria-hidden="true">
+            {particles.map((_, i) => {
+                const style = {
+                    left: `${Math.random() * 100}%`,
+                    animationDuration: `${Math.random() * 10 + 10}s`,
+                    animationDelay: `${Math.random() * 15}s`,
+                };
+                const sizeClass = Math.random() > 0.5 ? 'w-1 h-1' : 'w-[3px] h-[3px]';
+                const colorClass = rarity === Rarity.Mythic 
+                    ? 'bg-brand-accent'
+                    : 'bg-white';
+
+                return (
+                    <div
+                        key={i}
+                        className={`absolute top-full rounded-full animate-floating-particles ${sizeClass} ${colorClass} shadow-glow-secondary`}
+                        style={style}
+                    ></div>
+                );
+            })}
+        </div>
+    );
+};
+
 const CardContent: React.FC<{ card: CardData }> = ({ card }) => {
   const typeStyle = cardTypeStyles[card.type];
   const rarityStyle = rarityStyles[card.rarity];
   const isVideo = card.imageUrl.endsWith('.mp4');
 
-  const cardInnerContent = (
+  const isSuperRareOrHigher = [Rarity.SuperRare, Rarity.Mythic, Rarity.Divine].includes(card.rarity);
+  const isMythicOrHigher = [Rarity.Mythic, Rarity.Divine].includes(card.rarity);
+
+  const cardLayers = (
     <>
-      {/* Background Image/Video */}
+      {/* Layer 0: Media */}
       {isVideo ? (
         <video 
           src={card.imageUrl} 
@@ -57,14 +89,22 @@ const CardContent: React.FC<{ card: CardData }> = ({ card }) => {
         />
       )}
 
-      {/* Overlay Gradient for readability */}
+      {/* Layer 1: Holographic Sheen */}
+      {isSuperRareOrHigher && (
+          <div className={`absolute inset-0 z-[5] bg-gradient-to-r from-transparent via-white/50 to-transparent bg-[length:200%_100%] bg-no-repeat mix-blend-overlay animate-holographic-sheen ${isMythicOrHigher ? 'opacity-30' : 'opacity-20'}`}></div>
+      )}
+
+      {/* Layer 2: Readability Gradient */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent z-10"></div>
 
-      {/* Content Layer */}
+      {/* Layer 3: Particles */}
+      {isMythicOrHigher && <Particles rarity={card.rarity} />}
+
+      {/* Layer 4: UI Content */}
       <div className="relative z-20 flex flex-col h-full p-4 justify-between">
         {/* Top Section: Name */}
         <header className="text-center">
-          <h2 className="font-serif text-2xl font-bold tracking-wider" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>
+          <h2 className="font-serif text-2xl font-bold tracking-wider" style={{ textShadow: '0px 2px 10px rgba(0, 0, 0, 1), 0px 1px 2px rgba(0, 0, 0, 0.8)' }}>
             {card.name}
           </h2>
         </header>
@@ -95,19 +135,26 @@ const CardContent: React.FC<{ card: CardData }> = ({ card }) => {
     </>
   );
 
+  const rarityAnimationClass = {
+      [Rarity.Rare]: 'animate-pulse-glow-primary',
+      [Rarity.SuperRare]: 'animate-pulse-glow-secondary',
+      [Rarity.Mythic]: 'animate-pulse-glow-accent',
+  }[card.rarity] || '';
+
+
   if (card.rarity === Rarity.Divine) {
     return (
-      <div className="relative w-full h-full rounded-2xl p-[2px] bg-gradient-to-br from-brand-secondary via-brand-accent to-brand-primary shadow-2xl shadow-black/50">
+      <div className="relative w-full h-full rounded-2xl p-[2px] bg-gradient-to-br from-brand-secondary via-brand-accent to-brand-primary bg-[length:200%_200%] animate-shimmer-border shadow-2xl shadow-black/50 animate-card-breath">
           <div className="relative w-full h-full rounded-[14px] flex flex-col overflow-hidden text-white">
-              {cardInnerContent}
+              {cardLayers}
           </div>
       </div>
     );
   }
 
   return (
-    <div className={`relative w-full h-full rounded-2xl border-2 ${rarityStyle.border} shadow-2xl shadow-black/50 flex flex-col overflow-hidden text-white`}>
-      {cardInnerContent}
+    <div className={`relative w-full h-full rounded-2xl border-2 ${rarityStyle.border} shadow-2xl shadow-black/50 flex flex-col overflow-hidden text-white ${rarityAnimationClass}`}>
+      {cardLayers}
     </div>
   );
 };

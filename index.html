@@ -6,28 +6,114 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Fry Cards</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      :root, [data-theme="nightdrive"] {
+        --color-bg: #1a1b26;
+        --color-surface: #24283b;
+        --color-card: #414868;
+        --color-text: #c0caf5;
+        --color-primary: #7aa2f7;
+        --color-secondary: #bb9af7;
+        --color-accent: #ff9e64;
+        --color-success: #9ece6a;
+        --color-danger: #f7768e;
+        --font-sans: 'Inter', sans-serif;
+        --font-serif: '"Cinzel Decorative"', serif;
+      }
+      [data-theme="daybreak"] {
+        --color-bg: #f2f5fa;
+        --color-surface: #ffffff;
+        --color-card: #e1e5f0;
+        --color-text: #3c4a69;
+        --color-primary: #3b82f6;
+        --color-secondary: #8b5cf6;
+        --color-accent: #f59e0b;
+        --color-success: #10b981;
+        --color-danger: #ef4444;
+        --font-sans: 'Inter', sans-serif;
+        --font-serif: '"Cinzel Decorative"', serif;
+      }
+      [data-theme="arcane"] {
+        --color-bg: #1c1424;
+        --color-surface: #2a1f3a;
+        --color-card: #4a3a5f;
+        --color-text: #e6ddeb;
+        --color-primary: #a78bfa;
+        --color-secondary: #f472b6;
+        --color-accent: #facc15;
+        --color-success: #4ade80;
+        --color-danger: #f87171;
+        --font-sans: 'Inter', sans-serif;
+        --font-serif: '"MedievalSharp"', serif;
+      }
+      /* Ensure body transition is smooth */
+      body {
+        transition: background-color 0.3s ease, color 0.3s ease;
+      }
+    </style>
     <script>
       tailwind.config = {
         theme: {
           extend: {
             colors: {
-              'brand-bg': '#1a1b26',
-              'brand-surface': '#24283b',
-              'brand-card': '#414868',
-              'brand-text': '#c0caf5',
-              'brand-primary': '#7aa2f7',
-              'brand-secondary': '#bb9af7',
-              'brand-accent': '#ff9e64',
-              'brand-success': '#9ece6a',
-              'brand-danger': '#f7768e',
+              'brand-bg': 'var(--color-bg)',
+              'brand-surface': 'var(--color-surface)',
+              'brand-card': 'var(--color-card)',
+              'brand-text': 'var(--color-text)',
+              'brand-primary': 'var(--color-primary)',
+              'brand-secondary': 'var(--color-secondary)',
+              'brand-accent': 'var(--color-accent)',
+              'brand-success': 'var(--color-success)',
+              'brand-danger': 'var(--color-danger)',
             },
             fontFamily: {
-              'sans': ['Inter', 'sans-serif'],
-              'serif': ['"Cinzel Decorative"', 'serif'],
+              'sans': ['var(--font-sans)', 'sans-serif'],
+              'serif': ['var(--font-serif)', 'serif'],
             },
             boxShadow: {
               'glow-primary': '0 0 15px 5px rgba(122, 162, 247, 0.3)',
               'glow-secondary': '0 0 15px 5px rgba(187, 154, 247, 0.3)',
+            },
+            animation: {
+              'pulse-glow-primary': 'pulse-glow-primary 3s ease-in-out infinite',
+              'pulse-glow-secondary': 'pulse-glow-secondary 3s ease-in-out infinite',
+              'pulse-glow-accent': 'pulse-glow-accent 3s ease-in-out infinite',
+              'holographic-sheen': 'holographic-sheen 4s linear infinite',
+              'floating-particles': 'floating-particles 20s linear infinite',
+              'card-breath': 'card-breath 6s ease-in-out infinite',
+              'shimmer-border': 'shimmer-border 4s ease-in-out infinite',
+            },
+            keyframes: {
+              'pulse-glow-primary': {
+                '0%, 100%': { boxShadow: '0 0 15px 5px rgba(122, 162, 247, 0.3)' },
+                '50%': { boxShadow: '0 0 25px 10px rgba(122, 162, 247, 0.5)' },
+              },
+              'pulse-glow-secondary': {
+                '0%, 100%': { boxShadow: '0 0 15px 5px rgba(187, 154, 247, 0.3)' },
+                '50%': { boxShadow: '0 0 25px 10px rgba(187, 154, 247, 0.5)' },
+              },
+              'pulse-glow-accent': {
+                '0%, 100%': { boxShadow: '0 0 15px 5px rgba(255, 158, 100, 0.3)' },
+                '50%': { boxShadow: '0 0 25px 10px rgba(255, 158, 100, 0.5)' },
+              },
+              'holographic-sheen': {
+                  '0%': { backgroundPosition: '-200% 0' },
+                  '100%': { backgroundPosition: '200% 0' },
+              },
+              'floating-particles': {
+                  '0%': { transform: 'translateY(0)', opacity: 0 },
+                  '20%': { opacity: 1 },
+                  '80%': { opacity: 1 },
+                  '100%': { transform: 'translateY(-500px) rotate(360deg)', opacity: 0 },
+              },
+              'card-breath': {
+                  '0%, 100%': { transform: 'scale(1)' },
+                  '50%': { transform: 'scale(1.03)' },
+              },
+              'shimmer-border': {
+                '0%, 100%': { backgroundPosition: '0% 50%' },
+                '50%': { backgroundPosition: '100% 50%' },
+              }
             }
           }
         }
@@ -35,12 +121,11 @@
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700&family=Inter:wght@400;500;700&family=MedievalSharp&display=swap" rel="stylesheet">
   <script type="importmap">
 {
   "imports": {
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.19.0",
     "react/": "https://aistudiocdn.com/react@^19.1.1/",
     "react": "https://aistudiocdn.com/react@^19.1.1"
   }
