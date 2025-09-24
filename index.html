@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Fry Cards</title>
+    <title>Fry Cards - River of Ruin</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       :root, [data-theme="nightdrive"] {
@@ -46,9 +46,11 @@
         --font-sans: 'Inter', sans-serif;
         --font-serif: '"MedievalSharp"', serif;
       }
-      /* Ensure body transition is smooth */
+      /* Ensure body transition is smooth and accommodates a full board */
       body {
         transition: background-color 0.3s ease, color 0.3s ease;
+        background-color: var(--color-bg);
+        color: var(--color-text);
       }
     </style>
     <script>
@@ -193,8 +195,8 @@
 }
 </script>
 </head>
-  <body>
+  <body class="bg-brand-bg text-brand-text font-sans">
     <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
+    <script type="module" src="/src/index.tsx"></script>
   </body>
 </html>
