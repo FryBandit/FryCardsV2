@@ -1,7 +1,7 @@
-
 import React from 'react';
 import { CardData, Rarity, CardSuit } from '../types';
 import { ManaIcon } from '../../components/icons/MagicIcon';
+import { SparklesIcon } from '../../components/icons/SparklesIcon';
 
 interface CardDisplayProps {
   card: CardData | null;
@@ -70,6 +70,16 @@ const HandCard: React.FC<{ card: CardData; onClick?: () => void; isSelected?: bo
           <div className="absolute bottom-full mb-4 w-64 p-3 bg-brand-surface border-2 border-brand-card rounded-lg shadow-2xl text-xs z-[100] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none -translate-x-1/4">
               <h4 className="font-bold font-serif text-base text-brand-primary">{card.name}</h4>
               <p className="italic text-brand-text/80 my-1">"{card.description}"</p>
+              {card.abilities && card.abilities.length > 0 && (
+                <div className="mt-2 pt-2 border-t border-brand-card/50 space-y-2">
+                    {card.abilities.map((ability, index) => (
+                        <div key={index}>
+                            <p className="font-bold text-brand-secondary">{ability.name}</p>
+                            <p className="text-brand-text/80 text-[11px]">{ability.description}</p>
+                        </div>
+                    ))}
+                </div>
+            )}
           </div>
 
           <div className={`relative w-full h-full rounded-lg shadow-lg shadow-black/30 overflow-hidden text-white transition-all duration-200 ${isSelected ? 'ring-4 ring-brand-accent' : `${rarityStyle.border} border`}`}>
@@ -82,6 +92,9 @@ const HandCard: React.FC<{ card: CardData; onClick?: () => void; isSelected?: bo
               {!isPlayable && <div className="absolute inset-0 bg-black/40 z-10"></div>}
               <div className="relative z-20 flex flex-col h-full p-2 justify-end">
                   <h3 className="font-sans text-xs font-bold leading-tight" style={{ textShadow: '0 1px 3px #000' }}>{card.name}</h3>
+                  {card.abilities && card.abilities.length > 0 && (
+                      <SparklesIcon className="w-4 h-4 text-brand-accent absolute top-1 right-1" style={{filter: 'drop-shadow(0 0 3px #ff9e64aa)'}} />
+                  )}
                   <div className="flex justify-between items-center text-xs mt-1">
                       <span className={`font-bold px-1.5 py-0.5 rounded-full text-[10px] ${rarityStyle.bg} ${rarityStyle.text}`}>{card.rarity.replace('-', ' ')}</span>
                       {card.manaCost !== undefined && (

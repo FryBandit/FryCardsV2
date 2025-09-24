@@ -1,4 +1,3 @@
-
 import { HandResult } from './lib/poker';
 
 export enum CardType {
@@ -40,9 +39,16 @@ export enum CardRank {
   Ace = 'A',
 }
 
+export interface Ability {
+  name: string;
+  description: string;
+  value?: number;
+  type?: 'Mana';
+}
+
 export interface CardData {
   id: number;
-  name: string;
+  name:string;
   description: string;
   type: CardType;
   rarity: Rarity;
@@ -52,6 +58,7 @@ export interface CardData {
   suit?: CardSuit;
   rank?: CardRank;
   manaCost?: number;
+  abilities?: Ability[];
 }
 
 // --- New Types for River of Ruin ---
@@ -69,6 +76,7 @@ export interface PlayerState {
   bet: number;
   hasActed: boolean;
   hasDiscarded: boolean;
+  hasPeeked: boolean;
 }
 
 export type GamePhase =

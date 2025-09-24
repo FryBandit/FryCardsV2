@@ -1,9 +1,10 @@
-
 import React from 'react';
-import { CardData, Rarity } from '../types';
+import { CardData, Rarity, GameState } from '../types';
 
 interface CardInspectorProps {
   card: CardData | null;
+  gameState: GameState;
+  onAction: (action: string, payload?: any) => void;
 }
 
 const rarityStyles: Record<Rarity, { text: string; bg: string; }> = {
@@ -15,10 +16,10 @@ const rarityStyles: Record<Rarity, { text: string; bg: string; }> = {
     [Rarity.Divine]: { text: 'text-transparent bg-clip-text bg-gradient-to-r from-rarity-super-rare to-rarity-mythic', bg: 'bg-gradient-to-r from-rarity-super-rare/20 to-rarity-mythic/20' },
 };
 
-const CardInspector: React.FC<CardInspectorProps> = ({ card }) => {
+const CardInspector: React.FC<CardInspectorProps> = ({ card, gameState, onAction }) => {
   if (!card) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-center text-brand-text/50 p-4 bg-brand-bg/50 rounded-2xl">
+      <div className="w-full aspect-[3/4] flex flex-col items-center justify-center text-center text-brand-text/50 p-4 bg-brand-bg/50 rounded-2xl">
         <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
         </svg>
@@ -31,9 +32,18 @@ const CardInspector: React.FC<CardInspectorProps> = ({ card }) => {
 
   const isVideo = card.imageUrl.endsWith('.mp4');
   const rarityStyle = rarityStyles[card.rarity];
+  const isMyTurn = gameState.activePlayerIndex === 0;
+
+  // Peek ability logic
+  const canPeek = card.abilities?.some(a => a.name === 'Peek') &&
+                  isMyTurn &&
+                  gameState.phase === 'PRE_FLOP' &&
+                  !gameState.players[0].hasPeeked &&
+                  gameState.players[0].mana >= 1 &&
+                  gameState.players[0].holeCards.some(c => c.id === card.id);
 
   return (
-    <div className="h-full flex flex-col p-1">
+    <div className="flex flex-col gap-4">
       <div className="relative aspect-[3/4] w-full rounded-xl overflow-hidden shadow-2xl shadow-black/50 group">
         {isVideo ? (
           <video src={card.imageUrl} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover" />
@@ -43,7 +53,7 @@ const CardInspector: React.FC<CardInspectorProps> = ({ card }) => {
         
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-4 flex flex-col justify-end opacity-0 group-hover:opacity-100 transition-opacity duration-300">
           <h3 className="font-serif text-2xl font-bold text-white" style={{ textShadow: '0 2px 4px #000' }}>{card.name}</h3>
-          <div className="flex items-center gap-2 my-2">
+          <div className="flex items-center gap-2 my-2 flex-wrap">
             <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${rarityStyle.bg} ${rarityStyle.text}`}>{card.rarity.replace('-', ' ')}</span>
             <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-brand-surface text-brand-text">{card.type}</span>
             {card.manaCost !== undefined && (
@@ -51,8 +61,38 @@ const CardInspector: React.FC<CardInspectorProps> = ({ card }) => {
             )}
           </div>
           <p className="text-sm text-brand-text/90 italic" style={{ textShadow: '0 1px 3px #000' }}>"{card.description}"</p>
+          {card.abilities && card.abilities.length > 0 && (
+              <div className="mt-2 pt-2 border-t border-brand-card/30 space-y-2">
+                  {card.abilities.map((ability, index) => (
+                      <div key={index}>
+                          <h4 className="font-bold text-brand-secondary" style={{ textShadow: '0 1px 3px #000' }}>{ability.name}</h4>
+                          <p className="text-sm text-brand-text/90" style={{ textShadow: '0 1px 3px #000' }}>{ability.description}</p>
+                      </div>
+                  ))}
+              </div>
+          )}
         </div>
       </div>
+      {card.abilities && card.abilities.length > 0 && (
+        <div className="flex-grow p-3 space-y-3 overflow-y-auto bg-brand-bg/50 rounded-lg">
+          <h4 className="font-serif text-lg font-bold border-b border-brand-card pb-1">Abilities</h4>
+          {card.abilities.map((ability, index) => (
+            <div key={index}>
+              <p className="font-bold text-brand-secondary">{ability.name}</p>
+              <p className="text-brand-text/80 text-sm my-1">{ability.description}</p>
+              {ability.name === 'Peek' && (
+                <button
+                  onClick={() => onAction('PEEK')}
+                  disabled={!canPeek}
+                  className="w-full mt-2 bg-brand-accent text-white font-bold py-2 px-4 rounded disabled:bg-brand-card disabled:text-brand-text/50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {canPeek ? 'Activate Peek (1 Mana)' : 'Cannot Peek'}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

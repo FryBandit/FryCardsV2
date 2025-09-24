@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { GameState, PlayerState, CardData } from '../types';
 import { evaluateHand, HandResult } from '../lib/poker';
@@ -207,6 +206,8 @@ const GameBoard: React.FC<GameBoardProps> = ({ gameState, onAction, theme, setTh
         }
     };
 
+    const canPeek = isMyTurn && phase === 'PRE_FLOP' && !activePlayer.hasPeeked && activePlayer.holeCards.some(c => c.abilities?.some(a => a.name === 'Peek'));
+
     return (
         <div className="w-full h-screen flex bg-brand-bg text-brand-text font-sans">
             {phase === 'SHOWDOWN' && showdownResults && <ShowdownDisplay gameState={gameState} onAction={onAction} />}
@@ -239,7 +240,9 @@ const GameBoard: React.FC<GameBoardProps> = ({ gameState, onAction, theme, setTh
             </main>
             <aside className="w-[400px] flex-shrink-0 bg-brand-surface/50 p-4 flex flex-col gap-4 h-full">
                 <header className="flex justify-end"><ThemeSwitcher currentTheme={theme} themes={themes} setTheme={setTheme} /></header>
-                <div className="flex-shrink-0" style={{ height: '400px' }}><CardInspector card={selectedCard} /></div>
+                <div className="flex-shrink-0">
+                    <CardInspector card={selectedCard} gameState={gameState} onAction={onAction} />
+                </div>
                 <div className="flex-grow flex flex-col min-h-0">
                     <h3 className="font-serif text-xl border-b border-brand-card pb-2 mb-2 flex-shrink-0">Game Log</h3>
                     <div ref={logContainerRef} className="flex-grow text-sm space-y-2 overflow-y-auto pr-2">{log.map((entry, i) => <p key={i} className="whitespace-pre-wrap">{entry}</p>)}</div>
@@ -255,6 +258,11 @@ const GameBoard: React.FC<GameBoardProps> = ({ gameState, onAction, theme, setTh
                                     <button onClick={() => onAction('PLAY_CARD', { cardIndex: selectedCardIndex })} disabled={selectedCardIndex === null || activePlayer.mana < (selectedCard?.manaCost ?? 0) || amountToCall > 0} className="w-full bg-brand-secondary text-white font-bold py-2 px-4 rounded disabled:bg-brand-card disabled:cursor-not-allowed">Play Card</button>
                                     <button onClick={() => onAction('DISCARD', { cardIndex: selectedCardIndex })} disabled={selectedCardIndex === null || activePlayer.hasDiscarded || amountToCall > 0} className="w-full bg-brand-accent/80 text-white font-bold py-2 px-4 rounded disabled:bg-brand-card disabled:cursor-not-allowed">Discard</button>
                                 </div>
+                                {canPeek && (
+                                    <button onClick={() => onAction('PEEK')} disabled={activePlayer.mana < 1} className="w-full bg-brand-accent/80 text-white font-bold py-2 px-4 rounded disabled:bg-brand-card disabled:cursor-not-allowed">
+                                        Peek (1 Mana)
+                                    </button>
+                                )}
                                 
                                 {amountToCall > 0 ? (
                                     <div className="space-y-2">

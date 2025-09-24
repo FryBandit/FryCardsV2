@@ -1,7 +1,7 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { CardData, GameState, PlayerState, GamePhase, CardType, CardSuit } from './types';
-import { CARDS, RIVER_DECK_UNITS, assignRandomPokerValue } from './constants';
+import { CardData, GameState, PlayerState, GamePhase, CardType, CardSuit, CardRank } from './types';
+import { CARDS, RIVER_DECK_UNITS, RANKS, assignRandomPokerValue } from './constants';
 import { evaluateHand, compareHands, HandResult } from './lib/poker';
 import { resolveCardEffect } from './lib/effects';
 import GameBoard from './components/GameBoard';
@@ -53,15 +53,55 @@ const advancePhase = (state: GameState): GameState => {
              newState.log = [...state.log, '--- The River ---', `Revealed: ${state.riverDeck[0].name}`];
              newState.activePlayerIndex = 0;
             return newState;
-        case 'RIVER':
+        case 'RIVER': {
             // --- SHOWDOWN LOGIC ---
-            const p1Cards = [...newState.players[0].holeCards, ...newState.communityCards];
-            const p2Cards = [...newState.players[1].holeCards, ...newState.communityCards];
+            const getPlayerShowdownCards = (player: PlayerState, communityCards: CardData[], log: string[]): CardData[] => {
+                let holeCards = player.holeCards.map(c => ({ ...c })); // deep copy
+                if (player.points <= 5) {
+                    holeCards.forEach(card => {
+                        if (card.abilities?.some(a => a.name === 'Last Stand')) {
+                            const currentRankIndex = RANKS.indexOf(card.rank!);
+                            if (currentRankIndex < RANKS.length - 1) { // not an ace
+                                card.rank = RANKS[currentRankIndex + 1];
+                                log.push(`${player.name}'s ${card.name} triggers Last Stand!`);
+                            }
+                        }
+                    });
+                }
+                return [...holeCards, ...communityCards];
+            };
+
+            let p1Log: string[] = [];
+            let p2Log: string[] = [];
+            const p1Cards = getPlayerShowdownCards(newState.players[0], newState.communityCards, p1Log);
+            const p2Cards = getPlayerShowdownCards(newState.players[1], newState.communityCards, p2Log);
+            
             const p1Hand = evaluateHand(p1Cards);
             const p2Hand = evaluateHand(p2Cards);
 
             let winnerIndex = -1;
-            let logMessage = `Showdown!\nPlayer 1: ${p1Hand.name}\nCPU: ${p2Hand.name}`;
+            let logMessage = `Showdown!${p1Log.length > 0 ? `\n` + p1Log.join('\n') : ''}${p2Log.length > 0 ? `\n` + p2Log.join('\n') : ''}\nPlayer 1: ${p1Hand.name}\nCPU: ${p2Hand.name}`;
+
+            // Underdog logic
+            [
+                { player: newState.players[0], hand: p1Hand },
+                { player: newState.players[1], hand: p2Hand }
+            ].forEach(({player, hand}) => {
+                if (hand.name === 'High Card' || hand.name === 'One Pair') {
+                    let underdogBonus = 0;
+                    player.holeCards.forEach(card => {
+                        card.abilities?.forEach(ability => {
+                            if (ability.name === 'Underdog') {
+                                underdogBonus += ability.value || 0;
+                            }
+                        });
+                    });
+                    if (underdogBonus > 0) {
+                        player.mana += underdogBonus;
+                        logMessage += `\n${player.name} gains ${underdogBonus} mana from Underdog.`;
+                    }
+                }
+            });
 
             const comparison = compareHands(p1Hand, p2Hand);
             if(comparison > 0) winnerIndex = 0;
@@ -75,7 +115,6 @@ const advancePhase = (state: GameState): GameState => {
                 logMessage += `\n${newState.players[loserIndex].name} loses ${newState.pot} points.`;
             } else {
                 logMessage += `\nIt's a tie! The pot is split.`;
-                // BUG FIX: On a tie, players should not lose points. The pot is just split.
             }
             newState.log.push(logMessage);
 
@@ -92,6 +131,7 @@ const advancePhase = (state: GameState): GameState => {
             newState.phase = 'SHOWDOWN';
             newState.showdownResults = { p1Hand, p2Hand, winnerIndex };
             return newState;
+          }
      }
      return newState;
   };
@@ -129,10 +169,11 @@ const App: React.FC = () => {
     const p1Points = currentState.players[0].points - ANTE;
     const p2Points = currentState.players[1].points - ANTE;
 
-    return {
+    // FIX: Add explicit GameState type to newState to ensure correct type inference for its properties, especially the `players` tuple.
+    const newState: GameState = {
       players: [
-        { ...currentState.players[0], deck: p1RemainingDeck, hand: p1Hand, holeCards: p1Hole, artifacts: [], discard: [], mana: STARTING_MANA, points: p1Points, bet: 0, hasActed: false, hasDiscarded: false },
-        { ...currentState.players[1], deck: p2RemainingDeck, hand: p2Hand, holeCards: p2Hole, artifacts: [], discard: [], mana: STARTING_MANA, points: p2Points, bet: 0, hasActed: false, hasDiscarded: false },
+        { ...currentState.players[0], deck: p1RemainingDeck, hand: p1Hand, holeCards: p1Hole, artifacts: [], discard: [], mana: STARTING_MANA, points: p1Points, bet: 0, hasActed: false, hasDiscarded: false, hasPeeked: false },
+        { ...currentState.players[1], deck: p2RemainingDeck, hand: p2Hand, holeCards: p2Hole, artifacts: [], discard: [], mana: STARTING_MANA, points: p2Points, bet: 0, hasActed: false, hasDiscarded: false, hasPeeked: false },
       ],
       riverDeck: shuffle(RIVER_DECK_UNITS),
       communityCards: [],
@@ -147,11 +188,40 @@ const App: React.FC = () => {
       lastBetSize: ANTE,
       showdownResults: null,
     };
+    
+    // Handle start-of-round abilities
+    newState.players.forEach((player) => {
+        // Scrapper
+        player.holeCards.forEach(card => {
+            if (card.abilities?.some(a => a.name === 'Scrapper') && card.rank !== CardRank.Ace) {
+                card.rank = CardRank.King;
+            }
+        });
+
+        // Synergy
+        const [card1, card2] = player.holeCards;
+        if (card1 && card2 && (card1.suit === card2.suit || card1.rank === card2.rank)) {
+            let synergyBonus = 0;
+            player.holeCards.forEach(card => {
+                card.abilities?.forEach(ability => {
+                    if (ability.name.startsWith('Synergy')) {
+                        synergyBonus += ability.value || 0;
+                    }
+                });
+            });
+            if (synergyBonus > 0) {
+                player.mana += synergyBonus;
+                newState.log.push(`${player.name} gains ${synergyBonus} mana from Synergy.`);
+            }
+        }
+    });
+
+    return newState;
   }, []);
 
   const initGame = useCallback(() => {
-    const p1: PlayerState = { id: 1, name: 'Player 1', deck: createPlayerDeck(), hand: [], holeCards: [], artifacts: [], discard: [], mana: 0, points: STARTING_POINTS, bet: 0, hasActed: false, hasDiscarded: false };
-    const p2: PlayerState = { id: 2, name: 'CPU', deck: createPlayerDeck(), hand: [], holeCards: [], artifacts: [], discard: [], mana: 0, points: STARTING_POINTS, bet: 0, hasActed: false, hasDiscarded: false };
+    const p1: PlayerState = { id: 1, name: 'Player 1', deck: createPlayerDeck(), hand: [], holeCards: [], artifacts: [], discard: [], mana: 0, points: STARTING_POINTS, bet: 0, hasActed: false, hasDiscarded: false, hasPeeked: false };
+    const p2: PlayerState = { id: 2, name: 'CPU', deck: createPlayerDeck(), hand: [], holeCards: [], artifacts: [], discard: [], mana: 0, points: STARTING_POINTS, bet: 0, hasActed: false, hasDiscarded: false, hasPeeked: false };
 
     const initialGameState: GameState = {
       players: [p1, p2], riverDeck: [], communityCards: [], activeLocation: null, pot: 0, activePlayerIndex: 0,
@@ -182,6 +252,19 @@ const App: React.FC = () => {
       let newState = JSON.parse(JSON.stringify(prevState)) as GameState;
       const activePlayer = newState.players[newState.activePlayerIndex];
       const opponent = newState.players[newState.activePlayerIndex === 0 ? 1: 0];
+
+      if (action === 'PEEK') {
+        if (newState.activePlayerIndex !== 0) return newState; // Player only for now
+        const player = newState.players[0];
+        const hasPeekAbility = player.holeCards.some(c => c.abilities?.some(a => a.name === 'Peek'));
+        if (!hasPeekAbility || player.hasPeeked || player.mana < 1 || newState.phase !== 'PRE_FLOP') {
+            return newState;
+        }
+        player.mana -= 1;
+        player.hasPeeked = true;
+        newState.log.push(`You peeked at the top of the river: ${newState.riverDeck[0].name}`);
+        return newState; // Do not end turn
+      }
 
       const endTurn = () => {
         activePlayer.hasActed = true;
@@ -235,14 +318,22 @@ const App: React.FC = () => {
               return endTurn();
           }
           case 'CALL': {
+              const hasIntimidate = opponent.holeCards.some(c => c.abilities?.some(a => a.name === 'Intimidate'));
+              const intimidateCost = hasIntimidate ? 1 : 0;
               const amountToCall = opponent.bet - activePlayer.bet;
-              if (amountToCall <= 0 || activePlayer.mana < amountToCall) return newState;
+              const totalCallCost = amountToCall + intimidateCost;
 
-              activePlayer.mana -= amountToCall;
+              if (amountToCall <= 0 || activePlayer.mana < totalCallCost) return newState;
+
+              activePlayer.mana -= totalCallCost;
               activePlayer.bet += amountToCall;
               newState.pot += amountToCall;
-              newState.amountToCall = 0; // Bet is matched
-              newState.log.push(`${activePlayer.name} calls.`);
+              newState.amountToCall = 0;
+              if (intimidateCost > 0) {
+                  newState.log.push(`${activePlayer.name} calls and pays an extra ${intimidateCost} mana for Intimidate.`);
+              } else {
+                  newState.log.push(`${activePlayer.name} calls.`);
+              }
               return endTurn();
           }
           case 'FOLD': {
@@ -302,7 +393,11 @@ const App: React.FC = () => {
       const cpu = gs.players[1];
       const player = gs.players[0];
       const { communityCards, phase, pot, lastBetSize } = gs;
+      
+      const hasIntimidate = player.holeCards.some(c => c.abilities?.some(a => a.name === 'Intimidate'));
+      const intimidateCost = hasIntimidate ? 1 : 0;
       const amountToCall = player.bet - cpu.bet;
+      const totalCallCost = amountToCall + intimidateCost;
 
       // --- Enhanced Hand & Board Analysis ---
       const allCards = [...cpu.holeCards, ...communityCards];
@@ -354,10 +449,10 @@ const App: React.FC = () => {
       
       // 1. FACING A BET
       if (amountToCall > 0) {
-          const potOdds = amountToCall / (pot + amountToCall);
+          const potOdds = totalCallCost / (pot + totalCallCost);
           const drawEquity = (totalOuts * (phase === 'FLOP' ? 4 : 2)) / 100;
 
-          if (cpu.mana < amountToCall) return handleAction('FOLD');
+          if (cpu.mana < totalCallCost) return handleAction('FOLD');
 
           // Monster hands: Raise most of the time, occasionally slow-play by just calling
           if (isMonster) {
@@ -388,7 +483,7 @@ const App: React.FC = () => {
 
           // Decent hands: Call if the price is right
           if (isDecent) {
-              if (amountToCall <= pot * 0.6) { // Bet is less than 2/3 pot
+              if (totalCallCost <= pot * 0.6) { // Bet is less than 2/3 pot
                   if (conservativeness < 0.85) return handleAction('CALL');
               }
           }
@@ -399,7 +494,7 @@ const App: React.FC = () => {
           }
           
           // Bluff-catching: Call with weak hands if bet is small
-          if(amountToCall <= pot * 0.2 && conservativeness < 0.3) {
+          if(totalCallCost <= pot * 0.2 && conservativeness < 0.3) {
              return handleAction('CALL');
           }
 
