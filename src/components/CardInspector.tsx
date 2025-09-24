@@ -1,5 +1,6 @@
 import React from 'react';
 import { CardData, Rarity, GameState } from '../types';
+import { ManaIcon } from './icons/MagicIcon';
 
 interface CardInspectorProps {
   card: CardData | null;
@@ -43,26 +44,26 @@ const CardInspector: React.FC<CardInspectorProps> = ({ card, gameState, onAction
                   gameState.players[0].holeCards.some(c => c.id === card.id);
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="relative aspect-[3/4] w-full rounded-xl overflow-hidden shadow-2xl shadow-black/50 group">
+    <div className="flex flex-col gap-4 h-full">
+      <div className="relative aspect-[3/4] w-full rounded-xl overflow-hidden shadow-2xl shadow-black/50 group flex-shrink-0">
         {isVideo ? (
           <video src={card.imageUrl} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover" />
         ) : (
           <img src={card.imageUrl} alt={card.name} className="absolute inset-0 w-full h-full object-cover" />
         )}
         
-        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-4 flex flex-col justify-end opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+        <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-transparent p-4 flex flex-col justify-end opacity-0 group-hover:opacity-100 transition-opacity duration-300">
           <h3 className="font-serif text-2xl font-bold text-white" style={{ textShadow: '0 2px 4px #000' }}>{card.name}</h3>
           <div className="flex items-center gap-2 my-2 flex-wrap">
             <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${rarityStyle.bg} ${rarityStyle.text}`}>{card.rarity.replace('-', ' ')}</span>
             <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-brand-surface text-brand-text">{card.type}</span>
             {card.manaCost !== undefined && (
-              <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-brand-primary/20 text-brand-primary">{card.manaCost} Mana</span>
+              <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-brand-primary/20 text-brand-primary"><ManaIcon className="w-3 h-3"/> {card.manaCost} Mana</span>
             )}
           </div>
           <p className="text-sm text-brand-text/90 italic" style={{ textShadow: '0 1px 3px #000' }}>"{card.description}"</p>
           {card.abilities && card.abilities.length > 0 && (
-              <div className="mt-2 pt-2 border-t border-brand-card/30 space-y-2">
+              <div className="mt-2 pt-2 border-t border-brand-card/30 space-y-2 max-h-32 overflow-y-auto">
                   {card.abilities.map((ability, index) => (
                       <div key={index}>
                           <h4 className="font-bold text-brand-secondary" style={{ textShadow: '0 1px 3px #000' }}>{ability.name}</h4>
@@ -73,26 +74,17 @@ const CardInspector: React.FC<CardInspectorProps> = ({ card, gameState, onAction
           )}
         </div>
       </div>
-      {card.abilities && card.abilities.length > 0 && (
-        <div className="flex-grow p-3 space-y-3 overflow-y-auto bg-brand-bg/50 rounded-lg">
-          <h4 className="font-serif text-lg font-bold border-b border-brand-card pb-1">Abilities</h4>
-          {card.abilities.map((ability, index) => (
-            <div key={index}>
-              <p className="font-bold text-brand-secondary">{ability.name}</p>
-              <p className="text-brand-text/80 text-sm my-1">{ability.description}</p>
-              {ability.name === 'Peek' && (
-                <button
-                  onClick={() => onAction('PEEK')}
-                  disabled={!canPeek}
-                  className="w-full mt-2 bg-brand-accent text-white font-bold py-2 px-4 rounded disabled:bg-brand-card disabled:text-brand-text/50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {canPeek ? 'Activate Peek (1 Mana)' : 'Cannot Peek'}
-                </button>
-              )}
-            </div>
-          ))}
+       {canPeek && (
+        <div className="flex-grow flex flex-col justify-end">
+            <button
+                onClick={() => onAction('PEEK')}
+                disabled={!canPeek}
+                className="w-full mt-2 bg-brand-accent text-white font-bold py-2 px-4 rounded disabled:bg-brand-card disabled:text-brand-text/50 disabled:cursor-not-allowed transition-colors"
+            >
+                {canPeek ? 'Activate Peek (1 Mana)' : 'Cannot Peek'}
+            </button>
         </div>
-      )}
+        )}
     </div>
   );
 };

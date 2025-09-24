@@ -45,7 +45,7 @@ export interface Ability {
   value?: number;
   type?: 'Mana';
   // New keyword properties
-  cost?: number; // For Imbue
+  cost?: number; // For Imbue, Last Stand
   charges?: number; // For Charge
   duration?: number; // For Chrono
   condition?: string; // For Trap, Flux
@@ -90,12 +90,18 @@ export interface PlayerState {
   hasUsedCrossroadsThisTurn: boolean;
   // New state properties
   manaDebt: number;
-  trapCard: CardData | null;
-  activeChronoEffects: { cardName: string, turns: number, description: string }[];
+  trapCard: { card: CardData; condition: string; } | null;
+  activeChronoEffects: { cardName: string; turns: number; description: string, cardId: number }[];
+  mulliganed: boolean;
+  stats: {
+    handsPlayed: number;
+    vpip: number; // Voluntarily Put In Pot
+  };
 }
 
 export type GamePhase =
   | 'SETUP'
+  | 'MULLIGAN'
   | 'PRE_FLOP'
   | 'FLOP'
   | 'TURN'

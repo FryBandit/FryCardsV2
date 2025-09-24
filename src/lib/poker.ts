@@ -7,7 +7,7 @@ export interface HandResult {
   value: number[]; // [handRank, highCard1, highCard2, ...]
 }
 
-const RANK_VALUES: Record<CardRank, number> = {
+export const RANK_VALUES: Record<CardRank, number> = {
   [CardRank.Two]: 2,
   [CardRank.Three]: 3,
   [CardRank.Four]: 4,

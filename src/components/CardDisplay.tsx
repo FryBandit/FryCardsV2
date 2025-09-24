@@ -1,7 +1,8 @@
+
 import React from 'react';
 import { CardData, Rarity, CardSuit } from '../types';
-import { ManaIcon } from '../../components/icons/MagicIcon';
-import { SparklesIcon } from '../../components/icons/SparklesIcon';
+import { ManaIcon } from './icons/MagicIcon';
+import { SparklesIcon } from './icons/SparklesIcon';
 
 interface CardDisplayProps {
   card: CardData | null;
