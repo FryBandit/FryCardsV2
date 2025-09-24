@@ -44,7 +44,16 @@ export interface Ability {
   description: string;
   value?: number;
   type?: 'Mana';
+  // New keyword properties
+  cost?: number; // For Imbue
+  charges?: number; // For Charge
+  duration?: number; // For Chrono
+  condition?: string; // For Trap, Flux
+  overloadCost?: number; // For Overload
+  overloadDescription?: string; // For Overload UI
+  abilityToGrant?: Ability; // For Imbue
 }
+
 
 export interface CardData {
   id: number;
@@ -79,6 +88,10 @@ export interface PlayerState {
   hasDiscarded: boolean;
   hasPeeked: boolean;
   hasUsedCrossroadsThisTurn: boolean;
+  // New state properties
+  manaDebt: number;
+  trapCard: CardData | null;
+  activeChronoEffects: { cardName: string, turns: number, description: string }[];
 }
 
 export type GamePhase =

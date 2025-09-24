@@ -12,11 +12,11 @@ interface CardDisplayProps {
   isInWinningHand?: boolean;
 }
 
-const suitSymbols: Record<CardSuit, string> = {
-  [CardSuit.Spades]: '♠',
-  [CardSuit.Hearts]: '♥',
-  [CardSuit.Diamonds]: '♦',
-  [CardSuit.Clubs]: '♣',
+const suitInfo: Record<CardSuit, { symbol: string; color: string }> = {
+  [CardSuit.Spades]: { symbol: '♠', color: 'text-brand-text' },
+  [CardSuit.Hearts]: { symbol: '♥', color: 'text-red-500' },
+  [CardSuit.Diamonds]: { symbol: '♦', color: 'text-red-500' },
+  [CardSuit.Clubs]: { symbol: '♣', color: 'text-brand-text' },
 };
 
 const rarityStyles: Record<Rarity, { text: string; bg: string; border?: string }> = {
@@ -51,7 +51,7 @@ const BoardCard: React.FC<{ card: CardData; isInWinningHand?: boolean }> = ({ ca
                 <h3 className="font-serif text-sm font-bold leading-tight" style={{ textShadow: '0 1px 3px #000' }}>{card.name}</h3>
                 {card.rank && card.suit && (
                     <div className="absolute top-1 left-1 bg-black/50 backdrop-blur-sm rounded-sm px-1.5 py-0.5 text-sm font-bold" style={{ textShadow: '0 1px 2px #000' }}>
-                        {card.rank}{suitSymbols[card.suit]}
+                        {card.rank}<span className={suitInfo[card.suit].color}>{suitInfo[card.suit].symbol}</span>
                     </div>
                 )}
             </div>

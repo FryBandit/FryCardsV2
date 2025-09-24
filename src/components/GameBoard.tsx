@@ -263,9 +263,11 @@ const GameBoard: React.FC<GameBoardProps> = ({ gameState, onAction, theme, setTh
                         <div className={`p-2 rounded-lg transition-all duration-300 ${isMyTurn ? 'bg-brand-primary/10' : ''}`}>
                             <h3 className="font-bold text-lg text-center mb-2">{isMyTurn ? "Your Turn" : "CPU's Turn"}</h3>
                             {isMyTurn && (<div className="space-y-3">
+                                <button onClick={() => onAction('PLAY_CARD', { cardIndex: selectedCardIndex })} disabled={selectedCardIndex === null || activePlayer.mana < (selectedCard?.manaCost ?? 0) || amountToCall > 0} className="w-full bg-brand-secondary text-white font-bold py-2 px-4 rounded disabled:bg-brand-card disabled:cursor-not-allowed">Play Selected Card</button>
+                                
                                 <div className="grid grid-cols-2 gap-2">
-                                    <button onClick={() => onAction('PLAY_CARD', { cardIndex: selectedCardIndex })} disabled={selectedCardIndex === null || activePlayer.mana < (selectedCard?.manaCost ?? 0) || amountToCall > 0} className="w-full bg-brand-secondary text-white font-bold py-2 px-4 rounded disabled:bg-brand-card disabled:cursor-not-allowed">Play Card</button>
-                                    <button onClick={() => onAction('DISCARD', { cardIndex: selectedCardIndex })} disabled={selectedCardIndex === null || activePlayer.hasDiscarded || amountToCall > 0} className="w-full bg-brand-accent/80 text-white font-bold py-2 px-4 rounded disabled:bg-brand-card disabled:cursor-not-allowed">Discard</button>
+                                    <button onClick={() => onAction('DISCARD', { cardIndex: selectedCardIndex })} disabled={selectedCardIndex === null || activePlayer.hasDiscarded || amountToCall > 0} className="w-full bg-brand-accent/70 text-white font-bold py-2 px-4 rounded disabled:bg-brand-card disabled:cursor-not-allowed">Discard</button>
+                                    <button onClick={() => onAction('SWAP_CARD', { cardIndex: selectedCardIndex })} disabled={selectedCardIndex === null || activePlayer.hasDiscarded || activePlayer.deck.length === 0 || amountToCall > 0} className="w-full bg-brand-accent text-white font-bold py-2 px-4 rounded disabled:bg-brand-card disabled:cursor-not-allowed">Swap Card</button>
                                 </div>
 
                                 {isAlchemistActive && <button onClick={() => onAction('ALCHEMY_DISCARD', { cardIndex: selectedCardIndex })} disabled={!canUseAlchemist} className="w-full bg-yellow-500 text-white font-bold py-2 px-4 rounded disabled:bg-brand-card disabled:cursor-not-allowed">Use Alchemist</button>}

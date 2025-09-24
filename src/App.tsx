@@ -1,9 +1,10 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { CardData, GameState, PlayerState, CardType, CardRank, Rarity } from './types';
 import { CARDS, RIVER_DECK_UNITS, RANKS, assignRandomPokerValue } from './constants';
 import { evaluateHand, compareHands } from './lib/poker';
 import GameBoard from './components/GameBoard';
-import { resolveCardEffect } from './lib/effects';
+
 
 const STARTING_POINTS = 10;
 const STARTING_MANA = 10;
@@ -26,6 +27,58 @@ const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [theme, setTheme] = useState<string>(() => document.documentElement.getAttribute('data-theme') || 'nightdrive');
 
+  // New function to resolve card effects based on keywords
+  const resolveCardEffect = (state: GameState, card: CardData, playerIndex: 0 | 1, isOverload: boolean = false): GameState => {
+      let newState = JSON.parse(JSON.stringify(state));
+      const player = newState.players[playerIndex];
+      const opponent = newState.players[playerIndex === 0 ? 1 : 0];
+
+      card.abilities?.forEach(ability => {
+          // This is a simplified handler. A full implementation would be much larger.
+          // For now, we'll just log that an effect would happen.
+          const effectDescription = isOverload ? ability.overloadDescription : ability.description;
+          newState.log.push(`> ${player.name}'s ${card.name} triggers '${ability.name}'! Effect: ${effectDescription}`);
+
+          // Example of a specific keyword logic
+          if (ability.name === 'Cascade') {
+              newState.log.push(`> Cascading...`);
+              // In a real implementation, we would loop through the deck here.
+          }
+           if (ability.name === 'Twin') {
+              newState.log.push(`> Twinned effect!`);
+              // Apply effect a second time
+          }
+      });
+      
+      // Placeholder for old effect logic
+      const opponentHasBulwark = opponent.holeCards.some(c => c.abilities?.some(a => a.name === 'Bulwark'));
+      if (card.id === 4) { // Solar Flare
+          let damage = isOverload ? 5 : 2;
+          if (opponentHasBulwark) {
+              damage = Math.max(0, damage - 1);
+              newState.log.push(`> ${opponent.name}'s Bulwark reduces the damage!`);
+          }
+          opponent.points -= damage;
+          newState.log.push(`> ${card.name} erupts, dealing ${damage} damage to ${opponent.name}.`);
+      }
+
+
+      // Check for game over after effects
+      if (newState.players[0].points <= 0 || newState.players[1].points <= 0) {
+          const p1Dead = newState.players[0].points <= 0;
+          const p2Dead = newState.players[1].points <= 0;
+          newState.phase = 'GAME_OVER';
+          if (p1Dead && p2Dead) {
+               newState.winner = null;
+               newState.log.push(`\n--- Both players were defeated! The game is a draw! ---`);
+          } else {
+               newState.winner = p1Dead ? newState.players[1] : newState.players[0];
+               newState.log.push(`\n--- ${newState.winner.name} wins the game! ---`);
+          }
+      }
+      return newState;
+  }
+
   const advancePhase = (state: GameState): GameState => {
      let newState: GameState = JSON.parse(JSON.stringify(state));
      // Reset for next betting round
@@ -39,34 +92,37 @@ const App: React.FC = () => {
             newState.phase = 'FLOP';
             newState.communityCards = state.riverDeck.slice(0, 3);
             newState.riverDeck = state.riverDeck.slice(3);
-            newState.log = [...state.log, '--- The Flop ---', ...newState.communityCards.map(c => `Revealed: ${c.name}`)];
+            newState.log.push('--- The Flop ---', ...newState.communityCards.map(c => `Revealed: ${c.rank} of ${c.suit}`));
             newState.activePlayerIndex = newState.firstPlayerIndexThisRound;
 
             // Oracle's Observatory ability
             if (newState.activeLocation?.abilities?.some(a => a.name === "Oracle's Observatory") && newState.riverDeck.length > 0) {
-                newState.log.push(`> The Observatory reveals the next card: ${newState.riverDeck[0].name}`);
+                const nextCard = newState.riverDeck[0];
+                newState.log.push(`> The Observatory reveals the next card: ${nextCard.rank} of ${nextCard.suit}`);
             }
 
             return newState;
         case 'FLOP':
              newState.phase = 'TURN';
-             newState.communityCards = [...state.communityCards, state.riverDeck[0]];
+             const turnCard = state.riverDeck[0];
+             newState.communityCards = [...state.communityCards, turnCard];
              newState.riverDeck = state.riverDeck.slice(1);
-             newState.log = [...state.log, '--- The Turn ---', `Revealed: ${state.riverDeck[0].name}`];
+             newState.log.push('--- The Turn ---', `Revealed: ${turnCard.rank} of ${turnCard.suit}`);
              newState.activePlayerIndex = newState.firstPlayerIndexThisRound;
             return newState;
         case 'TURN':
              newState.phase = 'RIVER';
-             newState.communityCards = [...state.communityCards, state.riverDeck[0]];
+             const riverCard = state.riverDeck[0];
+             newState.communityCards = [...state.communityCards, riverCard];
              newState.riverDeck = state.riverDeck.slice(1);
-             newState.log = [...state.log, '--- The River ---', `Revealed: ${state.riverDeck[0].name}`];
+             newState.log.push('--- The River ---', `Revealed: ${riverCard.rank} of ${riverCard.suit}`);
              newState.activePlayerIndex = newState.firstPlayerIndexThisRound;
             return newState;
         case 'RIVER': {
             // Volatile ability check BEFORE showdown
             if (newState.activeLocation?.abilities?.some(a => a.name === 'Volatile')) {
                 const location = newState.activeLocation;
-                newState.log.push(`${location.name} becomes unstable and is destroyed!`);
+                newState.log.push(`> ${location.name} becomes unstable and is destroyed!`);
                 
                 // Find owner and move to discard
                 for (let i = 0; i < newState.players.length; i++) {
@@ -81,7 +137,7 @@ const App: React.FC = () => {
                 
                 newState.activeLocation = null;
                 newState.players.forEach(p => p.points -= 3);
-                newState.log.push(`All players lose 3 points.`);
+                newState.log.push(`> All players lose 3 points from Volatile effect.`);
 
                 // Check for game over *after* volatile damage
                 const p1Dead = newState.players[0].points <= 0;
@@ -100,32 +156,39 @@ const App: React.FC = () => {
             }
 
             // --- SHOWDOWN LOGIC ---
-            const getPlayerShowdownCards = (player: PlayerState, communityCards: CardData[], log: string[]): CardData[] => {
+            const getPlayerShowdownCards = (player: PlayerState, communityCards: CardData[], log: string[]): { cards: CardData[], lastStandTriggered: boolean } => {
                 let holeCards = player.holeCards.map(c => ({ ...c })); // deep copy
+                let lastStandTriggered = false;
                 if (player.points <= 5) {
                     holeCards.forEach(card => {
                         if (card.abilities?.some(a => a.name === 'Last Stand')) {
                             const currentRankIndex = RANKS.indexOf(card.rank!);
                             if (currentRankIndex < RANKS.length - 1) { // not an ace
                                 card.rank = RANKS[currentRankIndex + 1];
-                                log.push(`${player.name}'s ${card.name} triggers Last Stand!`);
+                                log.push(`> ${player.name}'s ${card.name} triggers Last Stand!`);
+                                lastStandTriggered = true;
                             }
                         }
                     });
                 }
-                return [...holeCards, ...communityCards];
+                return { cards: [...holeCards, ...communityCards], lastStandTriggered };
             };
 
             let p1Log: string[] = [];
             let p2Log: string[] = [];
-            const p1Cards = getPlayerShowdownCards(newState.players[0], newState.communityCards, p1Log);
-            const p2Cards = getPlayerShowdownCards(newState.players[1], newState.communityCards, p2Log);
+            const { cards: p1Cards, lastStandTriggered: p1LastStandTriggered } = getPlayerShowdownCards(newState.players[0], newState.communityCards, p1Log);
+            const { cards: p2Cards, lastStandTriggered: p2LastStandTriggered } = getPlayerShowdownCards(newState.players[1], newState.communityCards, p2Log);
             
             const p1Hand = evaluateHand(p1Cards);
             const p2Hand = evaluateHand(p2Cards);
 
             let winnerIndex = -1;
-            let logMessage = `Showdown!${p1Log.length > 0 ? `\n` + p1Log.join('\n') : ''}${p2Log.length > 0 ? `\n` + p2Log.join('\n') : ''}\nPlayer 1: ${p1Hand.name}\nCPU: ${p2Hand.name}`;
+            let logMessage = `--- Showdown! ---\n` +
+             `${p1Log.length > 0 ? p1Log.join('\n') + `\n` : ''}` +
+             `${p2Log.length > 0 ? p2Log.join('\n') + `\n` : ''}` +
+             `${newState.players[0].name} has: ${p1Hand.name}\n` +
+             `${newState.players[1].name} has: ${p2Hand.name}`;
+
 
             // Underdog logic
             [
@@ -143,7 +206,7 @@ const App: React.FC = () => {
                     });
                     if (underdogBonus > 0) {
                         player.mana += underdogBonus;
-                        logMessage += `\n${player.name} gains ${underdogBonus} mana from Underdog.`;
+                        logMessage += `\n> ${player.name} gains ${underdogBonus} mana from Underdog.`;
                     }
                 }
             });
@@ -156,18 +219,26 @@ const App: React.FC = () => {
             
             if (winnerIndex !== -1) {
                 const loserIndex = winnerIndex === 0 ? 1 : 0;
-                logMessage += `\n${newState.players[winnerIndex].name} wins the showdown!`;
-                newState.players[winnerIndex].points += Math.floor(newState.pot / 2); // Winner gains half the pot in points
+                logMessage += `\n> ${newState.players[winnerIndex].name} wins the showdown!`;
+                
+                const winnerUsedLastStand = (winnerIndex === 0 && p1LastStandTriggered) || (winnerIndex === 1 && p2LastStandTriggered);
+
+                if (!winnerUsedLastStand) {
+                    newState.players[winnerIndex].points += Math.floor(newState.pot / 2); // Winner gains half the pot in points
+                } else {
+                    logMessage += `\n> ${newState.players[winnerIndex].name} forgoes point gain due to Last Stand.`;
+                }
+                
                 newState.lastRoundWinnerId = newState.players[winnerIndex].id;
 
                 if (!isSanctuaryActive) {
                     newState.players[loserIndex].points -= newState.pot;
-                    logMessage += `\n${newState.players[loserIndex].name} loses ${newState.pot} points.`;
+                    logMessage += `\n> ${newState.players[loserIndex].name} loses ${newState.pot} points.`;
                 } else {
-                    logMessage += `\n${newState.players[loserIndex].name} is protected by Sanctuary and loses no points.`;
+                    logMessage += `\n> ${newState.players[loserIndex].name} is protected by Sanctuary and loses no points.`;
                 }
             } else {
-                logMessage += `\nIt's a tie! The pot is split.`;
+                logMessage += `\n> It's a tie! The pot is split.`;
                 newState.lastRoundWinnerId = null;
             }
             newState.log.push(logMessage);
@@ -223,8 +294,8 @@ const App: React.FC = () => {
 
     const newState: GameState = {
       players: [
-        { ...currentState.players[0], deck: p1RemainingDeck, hand: p1Hand, holeCards: p1Hole, artifacts: [], discard: [], mana: STARTING_MANA, points: p1Points, bet: ANTE, hasActed: false, hasDiscarded: false, hasPeeked: false, hasUsedCrossroadsThisTurn: false, hasMadeBettingActionThisTurn: false },
-        { ...currentState.players[1], deck: p2RemainingDeck, hand: p2Hand, holeCards: p2Hole, artifacts: [], discard: [], mana: STARTING_MANA, points: p2Points, bet: ANTE, hasActed: false, hasDiscarded: false, hasPeeked: false, hasUsedCrossroadsThisTurn: false, hasMadeBettingActionThisTurn: false },
+        { ...currentState.players[0], deck: p1RemainingDeck, hand: p1Hand, holeCards: p1Hole, artifacts: [], discard: [], mana: STARTING_MANA, points: p1Points, bet: ANTE, hasActed: false, hasDiscarded: false, hasPeeked: false, hasUsedCrossroadsThisTurn: false, hasMadeBettingActionThisTurn: false, manaDebt: 0, trapCard: null, activeChronoEffects: [] },
+        { ...currentState.players[1], deck: p2RemainingDeck, hand: p2Hand, holeCards: p2Hole, artifacts: [], discard: [], mana: STARTING_MANA, points: p2Points, bet: ANTE, hasActed: false, hasDiscarded: false, hasPeeked: false, hasUsedCrossroadsThisTurn: false, hasMadeBettingActionThisTurn: false, manaDebt: 0, trapCard: null, activeChronoEffects: [] },
       ],
       riverDeck: shuffle(RIVER_DECK_UNITS),
       communityCards: [],
@@ -264,7 +335,7 @@ const App: React.FC = () => {
             });
             if (synergyBonus > 0) {
                 player.mana += synergyBonus;
-                newState.log.push(`${player.name} gains ${synergyBonus} mana from Synergy.`);
+                newState.log.push(`> ${player.name} gains ${synergyBonus} mana from Synergy.`);
             }
         }
         
@@ -280,7 +351,7 @@ const App: React.FC = () => {
             });
             if (momentumBonus > 0) {
                 player.mana += momentumBonus;
-                newState.log.push(`${player.name} gains ${momentumBonus} mana from Momentum for winning the last round!`);
+                newState.log.push(`> ${player.name} gains ${momentumBonus} mana from Momentum for winning the last round!`);
             }
         }
     });
@@ -289,8 +360,8 @@ const App: React.FC = () => {
   }, []);
 
   const initGame = useCallback(() => {
-    const p1: PlayerState = { id: 1, name: 'Player 1', deck: createPlayerDeck(), hand: [], holeCards: [], artifacts: [], discard: [], mana: 0, points: STARTING_POINTS, bet: 0, hasActed: false, hasDiscarded: false, hasPeeked: false, hasUsedCrossroadsThisTurn: false, hasMadeBettingActionThisTurn: false };
-    const p2: PlayerState = { id: 2, name: 'CPU', deck: createPlayerDeck(), hand: [], holeCards: [], artifacts: [], discard: [], mana: 0, points: STARTING_POINTS, bet: 0, hasActed: false, hasDiscarded: false, hasPeeked: false, hasUsedCrossroadsThisTurn: false, hasMadeBettingActionThisTurn: false };
+    const p1: PlayerState = { id: 1, name: 'Player 1', deck: createPlayerDeck(), hand: [], holeCards: [], artifacts: [], discard: [], mana: 0, points: STARTING_POINTS, bet: 0, hasActed: false, hasDiscarded: false, hasPeeked: false, hasUsedCrossroadsThisTurn: false, hasMadeBettingActionThisTurn: false, manaDebt: 0, trapCard: null, activeChronoEffects: [] };
+    const p2: PlayerState = { id: 2, name: 'CPU', deck: createPlayerDeck(), hand: [], holeCards: [], artifacts: [], discard: [], mana: 0, points: STARTING_POINTS, bet: 0, hasActed: false, hasDiscarded: false, hasPeeked: false, hasUsedCrossroadsThisTurn: false, hasMadeBettingActionThisTurn: false, manaDebt: 0, trapCard: null, activeChronoEffects: [] };
 
     const initialGameState: GameState = {
       players: [p1, p2], riverDeck: [], communityCards: [], activeLocation: null, pot: 0, activePlayerIndex: 0,
@@ -333,7 +404,7 @@ const App: React.FC = () => {
       const opponent = newState.players[newState.activePlayerIndex === 0 ? 1: 0];
 
       const endTurn = (state: GameState): GameState => {
-        const turnEndState = JSON.parse(JSON.stringify(state));
+        let turnEndState = JSON.parse(JSON.stringify(state));
         const actingPlayer = turnEndState.players[turnEndState.activePlayerIndex];
         const opp = turnEndState.players[turnEndState.activePlayerIndex === 0 ? 1: 0];
 
@@ -342,16 +413,35 @@ const App: React.FC = () => {
         const opponentIndex = turnEndState.activePlayerIndex === 0 ? 1 : 0;
 
         if (turnEndState.players[opponentIndex].hasActed && actingPlayer.bet === opp.bet) {
+            turnEndState.log.push("--- Betting round concludes. ---");
             return advancePhase(turnEndState);
         }
 
         turnEndState.activePlayerIndex = opponentIndex as 0 | 1;
+        const newActivePlayer = turnEndState.players[turnEndState.activePlayerIndex];
+        const newOpponent = turnEndState.players[turnEndState.activePlayerIndex === 0 ? 1: 0];
+        
+        turnEndState.log.push(`It is now ${newActivePlayer.name}'s turn.`);
+
+        // --- Start of Turn Effects for new active player ---
+        // Mana Debt (from Overload)
+        if (newActivePlayer.manaDebt > 0) {
+            turnEndState.log.push(`> ${newActivePlayer.name} pays mana debt of ${newActivePlayer.manaDebt}.`);
+            newActivePlayer.mana = Math.max(0, newActivePlayer.mana - newActivePlayer.manaDebt);
+            newActivePlayer.manaDebt = 0;
+        }
 
         // Mana Well ability
         if (turnEndState.activeLocation?.abilities?.some(a => a.name === 'Mana Well')) {
-            const nextPlayer = turnEndState.players[turnEndState.activePlayerIndex];
-            nextPlayer.mana += 1;
-            turnEndState.log.push(`${nextPlayer.name} gains 1 mana from Mana Well.`);
+            newActivePlayer.mana += 1;
+            turnEndState.log.push(`> ${newActivePlayer.name} gains 1 mana from Mana Well.`);
+        }
+
+        // Bulwark ability
+        const newPlayerHasBulwark = newActivePlayer.holeCards.some(c => c.abilities?.some(a => a.name === 'Bulwark'));
+        if (newPlayerHasBulwark && newActivePlayer.points < newOpponent.points) {
+            newActivePlayer.mana += 1;
+            turnEndState.log.push(`> ${newActivePlayer.name} gains 1 mana from Bulwark for being behind.`);
         }
         return turnEndState;
       }
@@ -365,7 +455,7 @@ const App: React.FC = () => {
         }
         player.mana -= 1;
         player.hasPeeked = true;
-        newState.log.push(`You peeked at the top of the river: ${newState.riverDeck[0].name}`);
+        newState.log.push(`> You pay 1 mana to Peek at the top of the river: ${newState.riverDeck[0].rank} of ${newState.riverDeck[0].suit}`);
         return newState; // Do not end turn
       }
 
@@ -410,11 +500,11 @@ const App: React.FC = () => {
                   newState.log.push(`> ${activePlayer.name}'s Economist reduces the cost by 1.`);
               }
 
-              if (costToRaise < 0 || activePlayer.mana < costToRaise || raiseAmount < (newState.lastBetSize * minBetMultiplier)) return newState;
+              if (costToRaise <= 0 || activePlayer.mana < costToRaise || raiseAmount < (newState.lastBetSize * minBetMultiplier)) return newState;
 
               activePlayer.mana -= costToRaise;
+              newState.pot += costToRaise;
               activePlayer.bet = amount;
-              newState.pot += (amount - activePlayer.bet); // original cost added to pot
 
               newState.amountToCall = raiseAmount;
               newState.lastBetSize = raiseAmount;
@@ -425,8 +515,8 @@ const App: React.FC = () => {
               return endTurn(newState);
           }
           case 'CALL': {
-              const hasIntimidate = opponent.holeCards.some(c => c.abilities?.some(a => a.name === 'Intimidate'));
-              const intimidateCost = hasIntimidate ? 1 : 0;
+              const intimidateInstances = opponent.holeCards.filter(c => c.abilities?.some(a => a.name === 'Intimidate')).length;
+              const intimidateCost = intimidateInstances;
               const amountToCall = opponent.bet - activePlayer.bet;
               let totalCallCost = amountToCall + intimidateCost;
 
@@ -439,12 +529,11 @@ const App: React.FC = () => {
 
               activePlayer.mana -= totalCallCost;
               activePlayer.bet += amountToCall;
-              newState.pot += amountToCall;
+              newState.pot += amountToCall + intimidateCost;
               newState.amountToCall = 0;
 
               if (intimidateCost > 0) {
                   newState.log.push(`${activePlayer.name} calls and pays an extra ${intimidateCost} mana for Intimidate.`);
-                  newState.pot += intimidateCost; // The extra mana also goes to the pot
               } else {
                   newState.log.push(`${activePlayer.name} calls.`);
               }
@@ -454,7 +543,7 @@ const App: React.FC = () => {
           case 'FOLD': {
               newState.log.push(`${activePlayer.name} folds.`);
               opponent.points += newState.pot; // Opponent wins the pot
-              newState.log.push(`${opponent.name} wins the pot of ${newState.pot}.`);
+              newState.log.push(`> ${opponent.name} wins the pot of ${newState.pot}.`);
               newState.lastRoundWinnerId = opponent.id;
               const loser = newState.players[newState.activePlayerIndex];
               const gameWinner = loser.points <= 0 ? opponent : null;
@@ -468,14 +557,23 @@ const App: React.FC = () => {
               return newState;
           }
           case 'PLAY_CARD': {
-              const { cardIndex } = payload;
+              const { cardIndex, isOverload } = payload;
               const card = activePlayer.hand[cardIndex];
-              const amountToCall = opponent.bet - activePlayer.bet;
-              if (!card || activePlayer.mana < (card.manaCost ?? 0) || amountToCall > 0) return newState;
+              const ability = card?.abilities?.[0];
+              const cost = isOverload ? ability?.overloadCost ?? 99 : card?.manaCost ?? 99;
+
+              // FIX: Use newState.amountToCall instead of the undefined 'amountToCall'
+              if (!card || activePlayer.mana < cost || newState.amountToCall > 0) return newState;
               
-              activePlayer.mana -= card.manaCost!;
+              activePlayer.mana -= cost;
               activePlayer.hand.splice(cardIndex, 1);
-              newState.log.push(`${activePlayer.name} plays ${card.name}.`);
+              newState.log.push(`${activePlayer.name} plays ${card.name}${isOverload ? ' with Overload!' : '.'}`);
+
+              if (isOverload) {
+                  activePlayer.manaDebt += cost;
+                  newState.log.push(`> ${activePlayer.name} incurs ${cost} mana debt for next turn.`);
+              }
+
               
               // Thriving Market ability
               const isThrivingMarketActive = newState.activeLocation?.abilities?.some(a => a.name === 'Thriving Market');
@@ -485,7 +583,7 @@ const App: React.FC = () => {
               }
 
               // Resolve card effects before moving card to zone
-              newState = resolveCardEffect(newState, card, newState.activePlayerIndex as 0 | 1);
+              newState = resolveCardEffect(newState, card, newState.activePlayerIndex as 0 | 1, isOverload);
 
               // Crossroads ability
               const isCrossroadsActive = newState.activeLocation?.abilities?.some(a => a.name === 'Crossroads');
@@ -493,7 +591,7 @@ const App: React.FC = () => {
                   if (activePlayer.deck.length > 0) {
                       const [drawnCard] = activePlayer.deck.splice(0, 1);
                       activePlayer.hand.push(drawnCard);
-                      newState.log.push(`${activePlayer.name} draws a card from Crossroads.`);
+                      newState.log.push(`> ${activePlayer.name} draws a card from Crossroads.`);
                       activePlayer.hasUsedCrossroadsThisTurn = true;
                   }
               }
@@ -540,6 +638,23 @@ const App: React.FC = () => {
 
               return endTurn(newState);
           }
+          case 'SWAP_CARD': {
+              const { cardIndex } = payload;
+              const card = activePlayer.hand[cardIndex];
+               if (!card || opponent.bet > activePlayer.bet || activePlayer.hasDiscarded || activePlayer.deck.length === 0) {
+                  return newState;
+              }
+              
+              activePlayer.hasDiscarded = true; // This action counts as the discard for the turn
+              const [discardedCard] = activePlayer.hand.splice(cardIndex, 1);
+              activePlayer.discard.push(discardedCard);
+              
+              const [drawnCard] = activePlayer.deck.splice(0,1);
+              activePlayer.hand.push(drawnCard);
+
+              newState.log.push(`${activePlayer.name} discards ${discardedCard.name} to draw a new card.`);
+              return endTurn(newState);
+          }
           case 'ALCHEMY_DISCARD': {
               const { cardIndex } = payload;
               const card = activePlayer.hand[cardIndex];
@@ -552,7 +667,7 @@ const App: React.FC = () => {
               const [discardedCard] = activePlayer.hand.splice(cardIndex, 1);
               activePlayer.discard.push(discardedCard);
               activePlayer.mana += 2;
-              newState.log.push(`${activePlayer.name} discards ${discardedCard.name} to Alchemist, gaining 2 mana.`);
+              newState.log.push(`> ${activePlayer.name} discards ${discardedCard.name} to Alchemist, gaining 2 mana.`);
               
               return endTurn(newState);
           }
@@ -570,8 +685,8 @@ const App: React.FC = () => {
       const isHighStakes = activeLocation?.abilities?.some(a => a.name === 'High Stakes');
       const minBetMultiplier = isHighStakes ? 2 : 1;
       
-      const hasIntimidate = player.holeCards.some(c => c.abilities?.some(a => a.name === 'Intimidate'));
-      const intimidateCost = hasIntimidate ? 1 : 0;
+      const playerIntimidateInstances = player.holeCards.filter(c => c.abilities?.some(a => a.name === 'Intimidate')).length;
+      const intimidateCost = playerIntimidateInstances;
       const amountToCall = player.bet - cpu.bet;
       const totalCallCost = amountToCall + intimidateCost;
       const cpuHasIntimidate = cpu.holeCards.some(c => c.abilities?.some(a => a.name === 'Intimidate'));
@@ -603,8 +718,10 @@ const App: React.FC = () => {
 
       const boardIsWet = Object.values(allSuitCounts).some(c=>c >= 3) || uniqueRanks.some((r, i) => i > 1 && uniqueRanks[i] - uniqueRanks[i-2] < 3);
 
-      const aggression = Math.random();
-      const conservativeness = Math.random();
+      let aggression = Math.random();
+      const hasPosition = gs.firstPlayerIndexThisRound === 0; // CPU (p1) acts after player (p0) post-flop
+      if (hasPosition) aggression = Math.min(1, aggression + 0.15);
+
 
       const isMonster = handRank >= 7; // Full House+
       const isVeryStrong = handRank >= 5; // Straight+
@@ -621,8 +738,10 @@ const App: React.FC = () => {
 
           // Anti-raise-loop: If player just raised, be much more cautious.
           if (playerJustRaised && !isMonster) {
-              if (isDrawing && drawEquity >= potOdds) return handleAction('CALL');
-              if ((isVeryStrong || isStrong) && potOdds < 0.4) return handleAction('CALL');
+              const veryGoodDraw = isDrawing && drawEquity >= potOdds && totalOuts > 8;
+              if (isVeryStrong || veryGoodDraw) {
+                  return handleAction('CALL');
+              }
               return handleAction('FOLD');
           }
 
@@ -669,7 +788,10 @@ const App: React.FC = () => {
                           score += (card.manaCost || 1) * 4; // Simple utility score
                       }
                       if (card.type === CardType.Artifact) {
-                          if (card.id === 8) score += 40; // Card draw is high value
+                          if (card.abilities?.some(a => a.name === 'Scrap' && a.description.includes('Draw'))) {
+                             score += 40;
+                             if(isDrawing) score += 30; // Prioritize when looking for outs
+                          }
                           else score += 15;
                       }
                       score += Math.random() * 5;
@@ -707,33 +829,33 @@ const App: React.FC = () => {
           if (!isDecent && !isDrawing) {
               const flushDrawOnBoard = Object.values(allSuitCounts).some(c => c >= 3);
               const straightDrawOnBoard = uniqueRanks.some((r, i) => i > 1 && uniqueRanks[i] - uniqueRanks[i - 2] < 4);
-              if (aggression > 0.8 && (flushDrawOnBoard || straightDrawOnBoard) && phase !== 'PRE_FLOP' && cpu.mana > 0) {
-                  const amount = betValue(0.6);
-                  if(amount > 0) return handleAction('BET', { amount });
+              if (aggression > (hasPosition ? 0.7 : 0.85) && (flushDrawOnBoard || straightDrawOnBoard) && phase !== 'PRE_FLOP' && cpu.mana > 0) {
+                  const bluffAmount = Math.min(cpu.mana, Math.max(lastBetSize * minBetMultiplier, Math.ceil(pot * (0.66 + Math.random() * 0.34))));
+                  if(bluffAmount > 0) return handleAction('BET', { amount: bluffAmount });
               }
           }
           
           // Discard logic: find an unplayable expensive card, prioritizing lower rarity
-          if (!cpu.hasDiscarded) {
-              let cardToDiscard: {index: number, card: CardData} | null = null;
-              const rarityValue: Record<Rarity, number> = { [Rarity.Common]: 1, [Rarity.Uncommon]: 2, [Rarity.Rare]: 3, [Rarity.SuperRare]: 4, [Rarity.Mythic]: 5, [Rarity.Divine]: 6 };
+          if (!cpu.hasDiscarded && aggression > 0.4) {
+              const unplayableCards = cpu.hand
+                .map((card, index) => ({ card, index }))
+                .filter(({ card }) => (card.manaCost ?? 0) > cpu.mana);
 
-              cpu.hand.forEach((card, index) => {
-                  if ((card.manaCost ?? 0) > cpu.mana) { // Card is unplayable
-                      if (!cardToDiscard) {
-                          cardToDiscard = {index, card};
-                      } else if ((card.manaCost ?? 0) > (cardToDiscard.card.manaCost ?? 0)) {
-                          cardToDiscard = {index, card};
-                      } else if ((card.manaCost ?? 0) === (cardToDiscard.card.manaCost ?? 0)) {
-                          if (rarityValue[card.rarity] < rarityValue[cardToDiscard.card.rarity]) {
-                               cardToDiscard = {index, card};
-                          }
-                      }
+              if (unplayableCards.length > 0) {
+                  const rarityValue: Record<Rarity, number> = { [Rarity.Common]: 1, [Rarity.Uncommon]: 2, [Rarity.Rare]: 3, [Rarity.SuperRare]: 4, [Rarity.Mythic]: 5, [Rarity.Divine]: 6 };
+                  
+                  unplayableCards.sort((a, b) => {
+                      const costDiff = (b.card.manaCost ?? 0) - (a.card.manaCost ?? 0);
+                      if (costDiff !== 0) return costDiff;
+                      return rarityValue[a.card.rarity] - rarityValue[b.card.rarity]; // Lower rarity is "worse"
+                  });
+
+                  const discardCandidates = unplayableCards.slice(0, 2);
+                  const cardToDiscard = discardCandidates[Math.floor(Math.random() * discardCandidates.length)];
+
+                  if (Math.random() < 0.8) {
+                      return handleAction('DISCARD', { cardIndex: cardToDiscard.index });
                   }
-              });
-
-              if (cardToDiscard && aggression > 0.5) {
-                  return handleAction('DISCARD', { cardIndex: cardToDiscard.index });
               }
           }
 
