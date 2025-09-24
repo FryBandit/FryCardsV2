@@ -169,6 +169,9 @@ const GameBoard: React.FC<GameBoardProps> = ({ gameState, onAction, theme, setTh
     const activePlayer = players[activePlayerIndex];
     const opponent = players[activePlayerIndex === 0 ? 1 : 0];
     const isMyTurn = activePlayerIndex === 0;
+
+    const isHighStakes = useMemo(() => activeLocation?.abilities?.some(a => a.name === 'High Stakes'), [activeLocation]);
+    const minBetMultiplier = isHighStakes ? 2 : 1;
     
     const selectedCardIndex = useMemo(() => {
         if (!selectedCard) return null;
@@ -177,7 +180,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ gameState, onAction, theme, setTh
     }, [selectedCard, players[0].hand]);
 
     const amountToCall = useMemo(() => opponent.bet - activePlayer.bet, [opponent.bet, activePlayer.bet]);
-    const minRaiseTotal = useMemo(() => opponent.bet + lastBetSize, [opponent.bet, lastBetSize]);
+    const minRaiseTotal = useMemo(() => opponent.bet + (lastBetSize * minBetMultiplier), [opponent.bet, lastBetSize, minBetMultiplier]);
 
     useEffect(() => { if(logContainerRef.current) logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight; }, [log]);
     useEffect(() => { setSelectedCard(null); }, [activePlayerIndex]);
@@ -186,12 +189,12 @@ const GameBoard: React.FC<GameBoardProps> = ({ gameState, onAction, theme, setTh
         if (amountToCall > 0) {
             setBetAmount(minRaiseTotal);
         } else {
-            setBetAmount(lastBetSize);
+            setBetAmount(lastBetSize * minBetMultiplier);
         }
-    }, [amountToCall, minRaiseTotal, lastBetSize, activePlayerIndex]);
+    }, [amountToCall, minRaiseTotal, lastBetSize, activePlayerIndex, minBetMultiplier]);
 
     const handleBetAmountChange = (value: number) => {
-        const minBet = (amountToCall > 0) ? minRaiseTotal : lastBetSize;
+        const minBet = (amountToCall > 0) ? minRaiseTotal : (lastBetSize * minBetMultiplier);
         const maxBet = activePlayer.mana + activePlayer.bet;
         const clampedValue = Math.max(minBet, Math.min(value, maxBet));
         setBetAmount(clampedValue);
@@ -206,7 +209,12 @@ const GameBoard: React.FC<GameBoardProps> = ({ gameState, onAction, theme, setTh
         }
     };
 
-    const canPeek = isMyTurn && phase === 'PRE_FLOP' && !activePlayer.hasPeeked && activePlayer.holeCards.some(c => c.abilities?.some(a => a.name === 'Peek'));
+    const revealOpponentCards = useMemo(() => {
+        return !!(activeLocation?.abilities?.some(a => a.name === 'Clarity') || (phase === 'SHOWDOWN' && showdownResults));
+    }, [activeLocation, phase, showdownResults]);
+
+    const isAlchemistActive = useMemo(() => activeLocation?.abilities?.some(a => a.name === 'Alchemist'), [activeLocation]);
+    const canUseAlchemist = isAlchemistActive && isMyTurn && selectedCardIndex !== null && amountToCall <= 0;
 
     return (
         <div className="w-full h-screen flex bg-brand-bg text-brand-text font-sans">
@@ -215,7 +223,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ gameState, onAction, theme, setTh
                 <header className="w-full flex justify-between items-center flex-shrink-0">
                     <h1 className="text-4xl font-serif font-bold text-transparent bg-clip-text bg-gradient-to-r from-brand-primary to-brand-secondary">River of Ruin</h1>
                 </header>
-                <PlayerZone player={players[1]} isActive={activePlayerIndex === 1} isOpponent={true} communityCards={communityCards} opponentBet={players[0].bet} />
+                <PlayerZone player={players[1]} isActive={activePlayerIndex === 1} isOpponent={true} communityCards={communityCards} opponentBet={players[0].bet} revealHoleCards={revealOpponentCards} />
                 <div className="flex-grow flex items-center justify-center gap-4 relative my-2">
                     <div className="w-28 h-40 flex-shrink-0">{activeLocation ? <CardDisplay card={activeLocation} displayMode='board' /> : <div className="w-full h-full bg-brand-surface/30 rounded-lg border-2 border-dashed border-brand-card/50 flex items-center justify-center text-xs text-brand-text/50 p-2 text-center">Location</div>}</div>
                     {Array(5).fill(null).map((_, i) => (<div key={i} className="w-28 h-40 flex-shrink-0"><CardDisplay card={communityCards[i] || null} displayMode="board"/></div>))}
@@ -230,8 +238,9 @@ const GameBoard: React.FC<GameBoardProps> = ({ gameState, onAction, theme, setTh
                         const isSelected = selectedCard?.id === card.id;
                         const isPlayable = isMyTurn && players[0].mana >= (card.manaCost ?? 0) && amountToCall <= 0;
                         const cardAngle = (index - (players[0].hand.length - 1) / 2) * 6;
+                        const marginLeft = players[0].hand.length > 8 ? '-4rem' : '-3rem';
                         return (
-                            <div key={card.id + '-' + index} className="w-32 h-44 transition-transform duration-300 ease-in-out origin-bottom" style={{ transform: `rotate(${cardAngle}deg) translateY(${isSelected ? '-1.5rem' : '0'}) scale(${isSelected ? '1.1' : '1'})`, zIndex: isSelected ? 10 : index, marginLeft: '-3rem' }} onClick={() => handleCardClick(card, isPlayable)}>
+                            <div key={card.id + '-' + index} className="w-32 h-44 transition-transform duration-300 ease-in-out origin-bottom" style={{ transform: `rotate(${cardAngle}deg) translateY(${isSelected ? '-1.5rem' : '0'}) scale(${isSelected ? '1.1' : '1'})`, zIndex: isSelected ? 10 : index, marginLeft: index > 0 ? marginLeft : 0 }} onClick={() => handleCardClick(card, isPlayable)}>
                                 <CardDisplay card={card} displayMode='hand' isSelected={isSelected} isPlayable={isPlayable} />
                             </div>
                         )
@@ -258,11 +267,8 @@ const GameBoard: React.FC<GameBoardProps> = ({ gameState, onAction, theme, setTh
                                     <button onClick={() => onAction('PLAY_CARD', { cardIndex: selectedCardIndex })} disabled={selectedCardIndex === null || activePlayer.mana < (selectedCard?.manaCost ?? 0) || amountToCall > 0} className="w-full bg-brand-secondary text-white font-bold py-2 px-4 rounded disabled:bg-brand-card disabled:cursor-not-allowed">Play Card</button>
                                     <button onClick={() => onAction('DISCARD', { cardIndex: selectedCardIndex })} disabled={selectedCardIndex === null || activePlayer.hasDiscarded || amountToCall > 0} className="w-full bg-brand-accent/80 text-white font-bold py-2 px-4 rounded disabled:bg-brand-card disabled:cursor-not-allowed">Discard</button>
                                 </div>
-                                {canPeek && (
-                                    <button onClick={() => onAction('PEEK')} disabled={activePlayer.mana < 1} className="w-full bg-brand-accent/80 text-white font-bold py-2 px-4 rounded disabled:bg-brand-card disabled:cursor-not-allowed">
-                                        Peek (1 Mana)
-                                    </button>
-                                )}
+
+                                {isAlchemistActive && <button onClick={() => onAction('ALCHEMY_DISCARD', { cardIndex: selectedCardIndex })} disabled={!canUseAlchemist} className="w-full bg-yellow-500 text-white font-bold py-2 px-4 rounded disabled:bg-brand-card disabled:cursor-not-allowed">Use Alchemist</button>}
                                 
                                 {amountToCall > 0 ? (
                                     <div className="space-y-2">
@@ -291,14 +297,14 @@ const GameBoard: React.FC<GameBoardProps> = ({ gameState, onAction, theme, setTh
                                             <button onClick={() => handleBetAmountChange(betAmount + 1)} className="px-3 py-1 bg-brand-surface rounded">+</button>
                                         </div>
                                         <div className="grid grid-cols-4 gap-2 mt-2 text-sm">
-                                             <button onClick={() => handleBetAmountChange(lastBetSize)} className="bg-brand-surface/50 rounded p-1">Min</button>
+                                             <button onClick={() => handleBetAmountChange(lastBetSize * minBetMultiplier)} className="bg-brand-surface/50 rounded p-1">Min</button>
                                              <button onClick={() => handleBetAmountChange(Math.ceil(pot/2))} className="bg-brand-surface/50 rounded p-1">1/2 Pot</button>
                                              <button onClick={() => handleBetAmountChange(pot)} className="bg-brand-surface/50 rounded p-1">Pot</button>
                                              <button onClick={() => handleBetAmountChange(activePlayer.mana)} className="bg-brand-surface/50 rounded p-1">All In</button>
                                         </div>
                                         <div className="grid grid-cols-2 gap-2">
                                             <button onClick={() => onAction('CHECK')} className="w-full bg-brand-surface font-bold py-3 px-4 rounded hover:bg-brand-card">Check</button>
-                                            <button onClick={() => onAction('BET', { amount: betAmount - activePlayer.bet })} disabled={(betAmount - activePlayer.bet) <= 0 || activePlayer.mana < (betAmount - activePlayer.bet)} className="w-full bg-brand-primary text-white font-bold py-3 px-4 rounded disabled:bg-brand-card disabled:cursor-not-allowed">Bet {betAmount - activePlayer.bet}</button>
+                                            <button onClick={() => onAction('BET', { amount: betAmount })} disabled={betAmount <= 0 || activePlayer.mana < betAmount} className="w-full bg-brand-primary text-white font-bold py-3 px-4 rounded disabled:bg-brand-card disabled:cursor-not-allowed">Bet {betAmount}</button>
                                         </div>
                                     </div>
                                 )}

@@ -75,8 +75,10 @@ export interface PlayerState {
   points: number;
   bet: number;
   hasActed: boolean;
+  hasMadeBettingActionThisTurn: boolean;
   hasDiscarded: boolean;
   hasPeeked: boolean;
+  hasUsedCrossroadsThisTurn: boolean;
 }
 
 export type GamePhase =
@@ -99,6 +101,8 @@ export interface GameState {
   phase: GamePhase;
   log: string[];
   winner: PlayerState | null;
+  firstPlayerIndexThisRound: 0 | 1;
+  lastRoundWinnerId: number | null;
   // Betting state
   amountToCall: number;
   lastBettor: number | null;

@@ -1,10 +1,9 @@
-
 import React, { useState, useCallback, useEffect } from 'react';
-import { CardData, GameState, PlayerState, GamePhase, CardType, CardSuit, CardRank } from './types';
+import { CardData, GameState, PlayerState, CardType, CardRank, Rarity } from './types';
 import { CARDS, RIVER_DECK_UNITS, RANKS, assignRandomPokerValue } from './constants';
-import { evaluateHand, compareHands, HandResult } from './lib/poker';
-import { resolveCardEffect } from './lib/effects';
+import { evaluateHand, compareHands } from './lib/poker';
 import GameBoard from './components/GameBoard';
+import { resolveCardEffect } from './lib/effects';
 
 const STARTING_POINTS = 10;
 const STARTING_MANA = 10;
@@ -23,13 +22,17 @@ const shuffle = <T,>(array: T[]): T[] => {
 
 const createPlayerDeck = (): CardData[] => shuffle(CARDS);
 
-const advancePhase = (state: GameState): GameState => {
+const App: React.FC = () => {
+  const [gameState, setGameState] = useState<GameState | null>(null);
+  const [theme, setTheme] = useState<string>(() => document.documentElement.getAttribute('data-theme') || 'nightdrive');
+
+  const advancePhase = (state: GameState): GameState => {
      let newState: GameState = JSON.parse(JSON.stringify(state));
      // Reset for next betting round
      newState.amountToCall = 0;
      newState.lastBettor = null;
      newState.lastBetSize = ANTE; // Minimum bet for the new round
-     newState.players.forEach(p => { p.bet = 0; p.hasActed = false; });
+     newState.players.forEach(p => { p.bet = 0; p.hasActed = false; p.hasMadeBettingActionThisTurn = false; });
      
      switch (state.phase) {
         case 'PRE_FLOP':
@@ -37,23 +40,65 @@ const advancePhase = (state: GameState): GameState => {
             newState.communityCards = state.riverDeck.slice(0, 3);
             newState.riverDeck = state.riverDeck.slice(3);
             newState.log = [...state.log, '--- The Flop ---', ...newState.communityCards.map(c => `Revealed: ${c.name}`)];
-            newState.activePlayerIndex = 0;
+            newState.activePlayerIndex = newState.firstPlayerIndexThisRound;
+
+            // Oracle's Observatory ability
+            if (newState.activeLocation?.abilities?.some(a => a.name === "Oracle's Observatory") && newState.riverDeck.length > 0) {
+                newState.log.push(`> The Observatory reveals the next card: ${newState.riverDeck[0].name}`);
+            }
+
             return newState;
         case 'FLOP':
              newState.phase = 'TURN';
              newState.communityCards = [...state.communityCards, state.riverDeck[0]];
              newState.riverDeck = state.riverDeck.slice(1);
              newState.log = [...state.log, '--- The Turn ---', `Revealed: ${state.riverDeck[0].name}`];
-             newState.activePlayerIndex = 0;
+             newState.activePlayerIndex = newState.firstPlayerIndexThisRound;
             return newState;
         case 'TURN':
              newState.phase = 'RIVER';
              newState.communityCards = [...state.communityCards, state.riverDeck[0]];
              newState.riverDeck = state.riverDeck.slice(1);
              newState.log = [...state.log, '--- The River ---', `Revealed: ${state.riverDeck[0].name}`];
-             newState.activePlayerIndex = 0;
+             newState.activePlayerIndex = newState.firstPlayerIndexThisRound;
             return newState;
         case 'RIVER': {
+            // Volatile ability check BEFORE showdown
+            if (newState.activeLocation?.abilities?.some(a => a.name === 'Volatile')) {
+                const location = newState.activeLocation;
+                newState.log.push(`${location.name} becomes unstable and is destroyed!`);
+                
+                // Find owner and move to discard
+                for (let i = 0; i < newState.players.length; i++) {
+                    const player = newState.players[i];
+                    const locIndex = player.artifacts.findIndex(a => a.id === location.id);
+                    if (locIndex !== -1) {
+                        const [removedLoc] = player.artifacts.splice(locIndex, 1);
+                        player.discard.push(removedLoc);
+                        break;
+                    }
+                }
+                
+                newState.activeLocation = null;
+                newState.players.forEach(p => p.points -= 3);
+                newState.log.push(`All players lose 3 points.`);
+
+                // Check for game over *after* volatile damage
+                const p1Dead = newState.players[0].points <= 0;
+                const p2Dead = newState.players[1].points <= 0;
+                if (p1Dead || p2Dead) {
+                    newState.phase = 'GAME_OVER';
+                    if (p1Dead && p2Dead) {
+                         newState.winner = null; // TIE
+                         newState.log.push(`\n--- Both players were defeated! The game is a draw! ---`);
+                    } else {
+                         newState.winner = p1Dead ? newState.players[1] : newState.players[0];
+                         newState.log.push(`\n--- ${newState.winner.name} wins the game! ---`);
+                    }
+                    return newState;
+                }
+            }
+
             // --- SHOWDOWN LOGIC ---
             const getPlayerShowdownCards = (player: PlayerState, communityCards: CardData[], log: string[]): CardData[] => {
                 let holeCards = player.holeCards.map(c => ({ ...c })); // deep copy
@@ -107,14 +152,23 @@ const advancePhase = (state: GameState): GameState => {
             if(comparison > 0) winnerIndex = 0;
             else if (comparison < 0) winnerIndex = 1;
             
+            const isSanctuaryActive = newState.activeLocation?.abilities?.some(a => a.name === 'Sanctuary');
+            
             if (winnerIndex !== -1) {
                 const loserIndex = winnerIndex === 0 ? 1 : 0;
                 logMessage += `\n${newState.players[winnerIndex].name} wins the showdown!`;
                 newState.players[winnerIndex].points += Math.floor(newState.pot / 2); // Winner gains half the pot in points
-                newState.players[loserIndex].points -= newState.pot;
-                logMessage += `\n${newState.players[loserIndex].name} loses ${newState.pot} points.`;
+                newState.lastRoundWinnerId = newState.players[winnerIndex].id;
+
+                if (!isSanctuaryActive) {
+                    newState.players[loserIndex].points -= newState.pot;
+                    logMessage += `\n${newState.players[loserIndex].name} loses ${newState.pot} points.`;
+                } else {
+                    logMessage += `\n${newState.players[loserIndex].name} is protected by Sanctuary and loses no points.`;
+                }
             } else {
                 logMessage += `\nIt's a tie! The pot is split.`;
+                newState.lastRoundWinnerId = null;
             }
             newState.log.push(logMessage);
 
@@ -135,10 +189,6 @@ const advancePhase = (state: GameState): GameState => {
      }
      return newState;
   };
-
-const App: React.FC = () => {
-  const [gameState, setGameState] = useState<GameState | null>(null);
-  const [theme, setTheme] = useState<string>(() => document.documentElement.getAttribute('data-theme') || 'nightdrive');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -169,11 +219,12 @@ const App: React.FC = () => {
     const p1Points = currentState.players[0].points - ANTE;
     const p2Points = currentState.players[1].points - ANTE;
 
-    // FIX: Add explicit GameState type to newState to ensure correct type inference for its properties, especially the `players` tuple.
+    const firstPlayer = currentState.firstPlayerIndexThisRound;
+
     const newState: GameState = {
       players: [
-        { ...currentState.players[0], deck: p1RemainingDeck, hand: p1Hand, holeCards: p1Hole, artifacts: [], discard: [], mana: STARTING_MANA, points: p1Points, bet: 0, hasActed: false, hasDiscarded: false, hasPeeked: false },
-        { ...currentState.players[1], deck: p2RemainingDeck, hand: p2Hand, holeCards: p2Hole, artifacts: [], discard: [], mana: STARTING_MANA, points: p2Points, bet: 0, hasActed: false, hasDiscarded: false, hasPeeked: false },
+        { ...currentState.players[0], deck: p1RemainingDeck, hand: p1Hand, holeCards: p1Hole, artifacts: [], discard: [], mana: STARTING_MANA, points: p1Points, bet: ANTE, hasActed: false, hasDiscarded: false, hasPeeked: false, hasUsedCrossroadsThisTurn: false, hasMadeBettingActionThisTurn: false },
+        { ...currentState.players[1], deck: p2RemainingDeck, hand: p2Hand, holeCards: p2Hole, artifacts: [], discard: [], mana: STARTING_MANA, points: p2Points, bet: ANTE, hasActed: false, hasDiscarded: false, hasPeeked: false, hasUsedCrossroadsThisTurn: false, hasMadeBettingActionThisTurn: false },
       ],
       riverDeck: shuffle(RIVER_DECK_UNITS),
       communityCards: [],
@@ -182,11 +233,13 @@ const App: React.FC = () => {
       phase: 'PRE_FLOP',
       log: [`--- New Round ---`, `Both players ante ${ANTE}. Pot is ${ANTE * 2}.`],
       winner: null,
-      activePlayerIndex: 0,
+      activePlayerIndex: firstPlayer,
+      firstPlayerIndexThisRound: firstPlayer,
       amountToCall: 0,
       lastBettor: null,
       lastBetSize: ANTE,
       showdownResults: null,
+      lastRoundWinnerId: null,
     };
     
     // Handle start-of-round abilities
@@ -214,18 +267,36 @@ const App: React.FC = () => {
                 newState.log.push(`${player.name} gains ${synergyBonus} mana from Synergy.`);
             }
         }
+        
+        // Momentum
+        if (currentState.lastRoundWinnerId === player.id) {
+            let momentumBonus = 0;
+            player.holeCards.forEach(card => {
+                card.abilities?.forEach(ability => {
+                    if (ability.name === 'Momentum') {
+                        momentumBonus += ability.value || 0;
+                    }
+                })
+            });
+            if (momentumBonus > 0) {
+                player.mana += momentumBonus;
+                newState.log.push(`${player.name} gains ${momentumBonus} mana from Momentum for winning the last round!`);
+            }
+        }
     });
 
     return newState;
   }, []);
 
   const initGame = useCallback(() => {
-    const p1: PlayerState = { id: 1, name: 'Player 1', deck: createPlayerDeck(), hand: [], holeCards: [], artifacts: [], discard: [], mana: 0, points: STARTING_POINTS, bet: 0, hasActed: false, hasDiscarded: false, hasPeeked: false };
-    const p2: PlayerState = { id: 2, name: 'CPU', deck: createPlayerDeck(), hand: [], holeCards: [], artifacts: [], discard: [], mana: 0, points: STARTING_POINTS, bet: 0, hasActed: false, hasDiscarded: false, hasPeeked: false };
+    const p1: PlayerState = { id: 1, name: 'Player 1', deck: createPlayerDeck(), hand: [], holeCards: [], artifacts: [], discard: [], mana: 0, points: STARTING_POINTS, bet: 0, hasActed: false, hasDiscarded: false, hasPeeked: false, hasUsedCrossroadsThisTurn: false, hasMadeBettingActionThisTurn: false };
+    const p2: PlayerState = { id: 2, name: 'CPU', deck: createPlayerDeck(), hand: [], holeCards: [], artifacts: [], discard: [], mana: 0, points: STARTING_POINTS, bet: 0, hasActed: false, hasDiscarded: false, hasPeeked: false, hasUsedCrossroadsThisTurn: false, hasMadeBettingActionThisTurn: false };
 
     const initialGameState: GameState = {
       players: [p1, p2], riverDeck: [], communityCards: [], activeLocation: null, pot: 0, activePlayerIndex: 0,
-      phase: 'SETUP', log: ['Game Initialized...'], winner: null, amountToCall: 0, lastBettor: null, lastBetSize: ANTE
+      phase: 'SETUP', log: ['Game Initialized...'], winner: null, amountToCall: 0, lastBettor: null, lastBetSize: ANTE,
+      firstPlayerIndexThisRound: Math.round(Math.random()) as 0 | 1,
+      lastRoundWinnerId: null,
     };
     setGameState(startRound(initialGameState));
   }, [startRound]);
@@ -234,17 +305,25 @@ const App: React.FC = () => {
 
   const handleAction = useCallback((action: string, payload?: any) => {
     setGameState(prevState => {
-      if (!prevState || prevState.phase === 'GAME_OVER' || prevState.phase === 'END_ROUND' || prevState.phase === 'SHOWDOWN') {
-         if (action === 'NEXT_ROUND' && prevState?.phase === 'END_ROUND') return startRound(prevState);
+      if (!prevState) return null;
+      if (action === 'NEW_GAME') {
+        initGame();
+        return null;
+      }
+
+      if (prevState.phase === 'GAME_OVER' || prevState.phase === 'END_ROUND' || prevState.phase === 'SHOWDOWN') {
+         if (action === 'NEXT_ROUND' && prevState?.phase === 'END_ROUND') {
+            let stateForNextRound = JSON.parse(JSON.stringify(prevState)) as GameState;
+            stateForNextRound.firstPlayerIndexThisRound = stateForNextRound.firstPlayerIndexThisRound === 0 ? 1 : 0;
+            // Persist last round winner ID for Momentum
+            stateForNextRound.lastRoundWinnerId = prevState.lastRoundWinnerId;
+            return startRound(stateForNextRound);
+         }
          if (action === 'END_SHOWDOWN' && prevState?.phase === 'SHOWDOWN') {
             let newState = JSON.parse(JSON.stringify(prevState)) as GameState;
             newState.phase = 'END_ROUND';
             newState.showdownResults = null;
             return newState;
-         }
-         if (action === 'NEW_GAME' && prevState?.phase === 'GAME_OVER') {
-             initGame();
-             return null;
          }
          return prevState;
       }
@@ -252,6 +331,30 @@ const App: React.FC = () => {
       let newState = JSON.parse(JSON.stringify(prevState)) as GameState;
       const activePlayer = newState.players[newState.activePlayerIndex];
       const opponent = newState.players[newState.activePlayerIndex === 0 ? 1: 0];
+
+      const endTurn = (state: GameState): GameState => {
+        const turnEndState = JSON.parse(JSON.stringify(state));
+        const actingPlayer = turnEndState.players[turnEndState.activePlayerIndex];
+        const opp = turnEndState.players[turnEndState.activePlayerIndex === 0 ? 1: 0];
+
+        actingPlayer.hasActed = true;
+        actingPlayer.hasUsedCrossroadsThisTurn = false; // Reset flag
+        const opponentIndex = turnEndState.activePlayerIndex === 0 ? 1 : 0;
+
+        if (turnEndState.players[opponentIndex].hasActed && actingPlayer.bet === opp.bet) {
+            return advancePhase(turnEndState);
+        }
+
+        turnEndState.activePlayerIndex = opponentIndex as 0 | 1;
+
+        // Mana Well ability
+        if (turnEndState.activeLocation?.abilities?.some(a => a.name === 'Mana Well')) {
+            const nextPlayer = turnEndState.players[turnEndState.activePlayerIndex];
+            nextPlayer.mana += 1;
+            turnEndState.log.push(`${nextPlayer.name} gains 1 mana from Mana Well.`);
+        }
+        return turnEndState;
+      }
 
       if (action === 'PEEK') {
         if (newState.activePlayerIndex !== 0) return newState; // Player only for now
@@ -266,62 +369,71 @@ const App: React.FC = () => {
         return newState; // Do not end turn
       }
 
-      const endTurn = () => {
-        activePlayer.hasActed = true;
-        const opponentIndex = newState.activePlayerIndex === 0 ? 1 : 0;
-
-        // End of betting round condition: both players have acted and bets are equal.
-        if (newState.players[opponentIndex].hasActed && activePlayer.bet === opponent.bet) {
-            return advancePhase(newState);
-        }
-        newState.activePlayerIndex = opponentIndex as 0 | 1;
-        return newState;
-      }
+      const isHighStakes = newState.activeLocation?.abilities?.some(a => a.name === 'High Stakes');
+      const minBetMultiplier = isHighStakes ? 2 : 1;
+      
+      const hasEconomist = activePlayer.holeCards.some(c => c.abilities?.some(a => a.name === 'Economist'));
       
       switch(action) {
           case 'CHECK':
               if (activePlayer.bet < opponent.bet) return newState; // Cannot check if there is a bet
               newState.log.push(`${activePlayer.name} checks.`);
-              return endTurn();
+              return endTurn(newState);
           case 'BET': {
               const { amount } = payload;
-              if (amount <= 0 || activePlayer.mana < amount || opponent.bet > activePlayer.bet) return newState;
+              let cost = amount;
+              if (hasEconomist && !activePlayer.hasMadeBettingActionThisTurn) {
+                  cost = Math.max(0, cost - 1);
+                  newState.log.push(`> ${activePlayer.name}'s Economist reduces the cost by 1.`);
+              }
+              if (amount <= 0 || activePlayer.mana < cost || opponent.bet > activePlayer.bet || amount < (newState.lastBetSize * minBetMultiplier) ) return newState;
               
-              activePlayer.mana -= amount;
+              activePlayer.mana -= cost;
               activePlayer.bet += amount;
               newState.pot += amount;
               
               newState.amountToCall = activePlayer.bet - opponent.bet;
               newState.lastBetSize = amount;
               newState.lastBettor = newState.activePlayerIndex;
+              activePlayer.hasMadeBettingActionThisTurn = true;
               opponent.hasActed = false;
               newState.log.push(`${activePlayer.name} bets ${amount}.`);
-              return endTurn();
+              return endTurn(newState);
           }
            case 'RAISE': {
               const { amount } = payload; // amount is the new total bet for the player
-              const costToRaise = amount - activePlayer.bet;
-              const currentHighestBet = opponent.bet;
-              const raiseAmount = amount - currentHighestBet;
+              let costToRaise = amount - activePlayer.bet;
+              const raiseAmount = amount - opponent.bet;
 
-              if (costToRaise <= 0 || activePlayer.mana < costToRaise || raiseAmount < newState.lastBetSize) return newState;
+              if (hasEconomist && !activePlayer.hasMadeBettingActionThisTurn) {
+                  costToRaise = Math.max(0, costToRaise - 1);
+                  newState.log.push(`> ${activePlayer.name}'s Economist reduces the cost by 1.`);
+              }
+
+              if (costToRaise < 0 || activePlayer.mana < costToRaise || raiseAmount < (newState.lastBetSize * minBetMultiplier)) return newState;
 
               activePlayer.mana -= costToRaise;
               activePlayer.bet = amount;
-              newState.pot += costToRaise;
+              newState.pot += (amount - activePlayer.bet); // original cost added to pot
 
               newState.amountToCall = raiseAmount;
               newState.lastBetSize = raiseAmount;
               newState.lastBettor = newState.activePlayerIndex;
+              activePlayer.hasMadeBettingActionThisTurn = true;
               opponent.hasActed = false;
               newState.log.push(`${activePlayer.name} raises to ${amount}.`);
-              return endTurn();
+              return endTurn(newState);
           }
           case 'CALL': {
               const hasIntimidate = opponent.holeCards.some(c => c.abilities?.some(a => a.name === 'Intimidate'));
               const intimidateCost = hasIntimidate ? 1 : 0;
               const amountToCall = opponent.bet - activePlayer.bet;
-              const totalCallCost = amountToCall + intimidateCost;
+              let totalCallCost = amountToCall + intimidateCost;
+
+              if (hasEconomist && !activePlayer.hasMadeBettingActionThisTurn) {
+                  totalCallCost = Math.max(0, totalCallCost - 1);
+                   newState.log.push(`> ${activePlayer.name}'s Economist reduces the cost by 1.`);
+              }
 
               if (amountToCall <= 0 || activePlayer.mana < totalCallCost) return newState;
 
@@ -329,18 +441,21 @@ const App: React.FC = () => {
               activePlayer.bet += amountToCall;
               newState.pot += amountToCall;
               newState.amountToCall = 0;
+
               if (intimidateCost > 0) {
                   newState.log.push(`${activePlayer.name} calls and pays an extra ${intimidateCost} mana for Intimidate.`);
+                  newState.pot += intimidateCost; // The extra mana also goes to the pot
               } else {
                   newState.log.push(`${activePlayer.name} calls.`);
               }
-              return endTurn();
+              activePlayer.hasMadeBettingActionThisTurn = true;
+              return endTurn(newState);
           }
           case 'FOLD': {
               newState.log.push(`${activePlayer.name} folds.`);
-              // Opponent wins the pot, but their points don't change. We just subtract from the folder.
-              activePlayer.points -= newState.pot;
+              opponent.points += newState.pot; // Opponent wins the pot
               newState.log.push(`${opponent.name} wins the pot of ${newState.pot}.`);
+              newState.lastRoundWinnerId = opponent.id;
               const loser = newState.players[newState.activePlayerIndex];
               const gameWinner = loser.points <= 0 ? opponent : null;
               if (gameWinner) {
@@ -361,9 +476,55 @@ const App: React.FC = () => {
               activePlayer.mana -= card.manaCost!;
               activePlayer.hand.splice(cardIndex, 1);
               newState.log.push(`${activePlayer.name} plays ${card.name}.`);
-              newState = resolveCardEffect(newState, card, newState.activePlayerIndex);
+              
+              // Thriving Market ability
+              const isThrivingMarketActive = newState.activeLocation?.abilities?.some(a => a.name === 'Thriving Market');
+              if (isThrivingMarketActive && card.type === CardType.Artifact) {
+                  activePlayer.mana += 1;
+                  newState.log.push(`> ${activePlayer.name} gains 1 mana from Thriving Market.`);
+              }
+
+              // Resolve card effects before moving card to zone
+              newState = resolveCardEffect(newState, card, newState.activePlayerIndex as 0 | 1);
+
+              // Crossroads ability
+              const isCrossroadsActive = newState.activeLocation?.abilities?.some(a => a.name === 'Crossroads');
+              if (isCrossroadsActive && card.type !== CardType.Event && !activePlayer.hasUsedCrossroadsThisTurn) {
+                  if (activePlayer.deck.length > 0) {
+                      const [drawnCard] = activePlayer.deck.splice(0, 1);
+                      activePlayer.hand.push(drawnCard);
+                      newState.log.push(`${activePlayer.name} draws a card from Crossroads.`);
+                      activePlayer.hasUsedCrossroadsThisTurn = true;
+                  }
+              }
+
+              switch (card.type) {
+                  case CardType.Event:
+                      activePlayer.discard.push(card);
+                      break;
+                  case CardType.Artifact:
+                      activePlayer.artifacts.push(card);
+                      break;
+                  case CardType.Location:
+                      if(newState.activeLocation) {
+                           const oldLocation = newState.activeLocation;
+                           // Find owner of old location
+                           const owner = newState.players.find(p => p.artifacts.some(a => a.id === oldLocation.id));
+                           if (owner) {
+                             owner.artifacts = owner.artifacts.filter(a => a.id !== oldLocation.id);
+                             owner.discard.push(oldLocation);
+                           }
+                      }
+                      activePlayer.artifacts.push(card); // Locations are also artifacts for ownership
+                      newState.activeLocation = card;
+                      break;
+                  case CardType.Unit:
+                      activePlayer.discard.push(card);
+                      break;
+              }
+
               opponent.hasActed = false; // Playing a card is like a bet, opponent must act
-              return endTurn();
+              return endTurn(newState);
           }
           case 'DISCARD': {
               const { cardIndex } = payload;
@@ -377,13 +538,24 @@ const App: React.FC = () => {
               activePlayer.discard.push(discardedCard);
               newState.log.push(`${activePlayer.name} discards ${discardedCard.name}.`);
 
-              return endTurn();
+              return endTurn(newState);
           }
-          case 'NEXT_ROUND':
-              return startRound(newState);
-          case 'NEW_GAME':
-              initGame();
-              return null;
+          case 'ALCHEMY_DISCARD': {
+              const { cardIndex } = payload;
+              const card = activePlayer.hand[cardIndex];
+              const isAlchemistActive = newState.activeLocation?.abilities?.some(a => a.name === 'Alchemist');
+
+              if (!card || !isAlchemistActive || opponent.bet > activePlayer.bet) {
+                  return newState;
+              }
+              
+              const [discardedCard] = activePlayer.hand.splice(cardIndex, 1);
+              activePlayer.discard.push(discardedCard);
+              activePlayer.mana += 2;
+              newState.log.push(`${activePlayer.name} discards ${discardedCard.name} to Alchemist, gaining 2 mana.`);
+              
+              return endTurn(newState);
+          }
       }
       return newState;
     });
@@ -392,33 +564,30 @@ const App: React.FC = () => {
   const getCpuAction = (gs: GameState) => {
       const cpu = gs.players[1];
       const player = gs.players[0];
-      const { communityCards, phase, pot, lastBetSize } = gs;
+      const { communityCards, phase, pot, lastBetSize, activeLocation, lastBettor } = gs;
+
+      const playerJustRaised = lastBettor === 0;
+      const isHighStakes = activeLocation?.abilities?.some(a => a.name === 'High Stakes');
+      const minBetMultiplier = isHighStakes ? 2 : 1;
       
       const hasIntimidate = player.holeCards.some(c => c.abilities?.some(a => a.name === 'Intimidate'));
       const intimidateCost = hasIntimidate ? 1 : 0;
       const amountToCall = player.bet - cpu.bet;
       const totalCallCost = amountToCall + intimidateCost;
+      const cpuHasIntimidate = cpu.holeCards.some(c => c.abilities?.some(a => a.name === 'Intimidate'));
+      const isSanctuaryActive = activeLocation?.abilities?.some(a => a.name === 'Sanctuary');
 
       // --- Enhanced Hand & Board Analysis ---
       const allCards = [...cpu.holeCards, ...communityCards];
       const cpuHand = evaluateHand(allCards);
       const handRank = cpuHand.value[0]; // 1 (High Card) to 10 (Royal Flush)
-
+      
       const ranksOnBoard = communityCards.map(c => c.rank!).filter(Boolean);
-      const suitsOnBoard = communityCards.map(c => c.suit!).filter(Boolean);
-      const suitCounts = suitsOnBoard.reduce((acc, suit) => {
-          if (suit) acc[suit] = (acc[suit] || 0) + 1;
-          return acc;
-      }, {} as Record<string, number>);
-
-      const isFlushPossible = Object.values(suitCounts).some(count => count >= 3);
-      const isBoardPaired = new Set(ranksOnBoard).size < ranksOnBoard.length;
       
       const rankOrder = "23456789TJQKA";
       const uniqueRanks = [...new Set(allCards.map(c => c.rank!))].map(r => rankOrder.indexOf(r)).sort((a,b)=>a-b);
       let straightOuts = 0;
       if (uniqueRanks.length >= 4) {
-          // Simplified straight draw logic: check for open-enders
           for(let i=0; i<uniqueRanks.length - 3; i++) {
               if(uniqueRanks[i+3] - uniqueRanks[i] === 3 && uniqueRanks.length === 4) straightOuts = 8; // Open-ended
               if(uniqueRanks[i+3] - uniqueRanks[i] === 4 && uniqueRanks.length === 4) straightOuts = 4; // Gutshot
@@ -432,117 +601,139 @@ const App: React.FC = () => {
       const flushOuts = Object.values(allSuitCounts).some(c => c === 4) ? 9 : 0;
       const totalOuts = straightOuts + flushOuts;
 
-      const boardIsWet = isFlushPossible || uniqueRanks.some((r, i) => i > 0 && uniqueRanks[i] - uniqueRanks[i-1] < 3);
+      const boardIsWet = Object.values(allSuitCounts).some(c=>c >= 3) || uniqueRanks.some((r, i) => i > 1 && uniqueRanks[i] - uniqueRanks[i-2] < 3);
 
-      // --- AI Personality ---
-      const aggression = Math.random(); // 0 to 1, higher is more aggressive/bluffy
-      const conservativeness = Math.random(); // 0 to 1, higher is tighter/less likely to call lightly
+      const aggression = Math.random();
+      const conservativeness = Math.random();
 
-      // --- Hand Strength Tiers ---
       const isMonster = handRank >= 7; // Full House+
       const isVeryStrong = handRank >= 5; // Straight+
       const isStrong = handRank >= 3; // Two Pair+
       const isDecent = handRank >= 2; // Pair
-      const isDrawing = totalOuts > 0 && phase !== 'RIVER';
+      const isDrawing = totalOuts > 8 && phase !== 'RIVER';
 
       // --- Decision Logic ---
-      
-      // 1. FACING A BET
-      if (amountToCall > 0) {
-          const potOdds = totalCallCost / (pot + totalCallCost);
-          const drawEquity = (totalOuts * (phase === 'FLOP' ? 4 : 2)) / 100;
-
+      if (amountToCall > 0) { // Facing a bet or raise
           if (cpu.mana < totalCallCost) return handleAction('FOLD');
+          let potOdds = totalCallCost / (pot + totalCallCost);
+          if (isSanctuaryActive) potOdds -= 0.15; // More likely to call if no points are at risk
+          const drawEquity = (totalOuts * (phase === 'FLOP' ? 4.2 : 2.1)) / 100;
 
-          // Monster hands: Raise most of the time, occasionally slow-play by just calling
+          // Anti-raise-loop: If player just raised, be much more cautious.
+          if (playerJustRaised && !isMonster) {
+              if (isDrawing && drawEquity >= potOdds) return handleAction('CALL');
+              if ((isVeryStrong || isStrong) && potOdds < 0.4) return handleAction('CALL');
+              return handleAction('FOLD');
+          }
+
           if (isMonster) {
-              if (aggression > 0.15) { // 85% chance to raise
-                  const raiseAmount = Math.min(cpu.mana + cpu.bet, cpu.bet + amountToCall + Math.max(lastBetSize, Math.ceil(pot * (0.75 + aggression * 0.25)))); // Raise pot-sized or more
-                  if (raiseAmount > cpu.bet + amountToCall) return handleAction('RAISE', { amount: raiseAmount });
+              if (aggression > 0.3) {
+                  const raiseIncrement = Math.min(cpu.mana - totalCallCost, Math.max(lastBetSize * minBetMultiplier, Math.ceil(pot * 0.75)));
+                  const newTotalBet = player.bet + raiseIncrement;
+                  if (raiseIncrement > 0) return handleAction('RAISE', { amount: newTotalBet });
               }
               return handleAction('CALL');
           }
-
-          // Very strong hands: Raise or call
-          if (isVeryStrong) {
-              if (aggression > 0.5 && !boardIsWet) { // Less likely to raise on wet boards to avoid re-raises
-                  const raiseAmount = Math.min(cpu.mana + cpu.bet, cpu.bet + amountToCall + Math.max(lastBetSize, Math.ceil(pot * 0.6)));
-                  if (raiseAmount > cpu.bet + amountToCall) return handleAction('RAISE', { amount: raiseAmount });
-              }
-              return handleAction('CALL');
-          }
-
-          // Strong draws (semi-bluff): Raise if aggressive, otherwise call if odds are good
-          if (isDrawing && drawEquity > 0.25) { // Has a good draw
-              if (aggression > 0.6) {
-                  const raiseAmount = Math.min(cpu.mana + cpu.bet, cpu.bet + amountToCall + Math.max(lastBetSize, Math.ceil(pot * 0.8)));
-                  if (raiseAmount > cpu.bet + amountToCall) return handleAction('RAISE', { amount: raiseAmount });
-              }
-              if (drawEquity >= potOdds) return handleAction('CALL');
-          }
-
-          // Decent hands: Call if the price is right
-          if (isDecent) {
-              if (totalCallCost <= pot * 0.6) { // Bet is less than 2/3 pot
-                  if (conservativeness < 0.85) return handleAction('CALL');
-              }
-          }
-
-          // Calling based on pure pot odds for any draw
           if (isDrawing && drawEquity >= potOdds) {
-              if (conservativeness < 0.9) return handleAction('CALL');
+              if (aggression > 0.7 && totalOuts > 8) { // Semi-bluff raise on a strong draw
+                   const raiseIncrement = Math.min(cpu.mana - totalCallCost, Math.max(lastBetSize * minBetMultiplier, Math.ceil(pot * 0.5)));
+                   const newTotalBet = player.bet + raiseIncrement;
+                   if (raiseIncrement > 0) return handleAction('RAISE', { amount: newTotalBet });
+              }
+              return handleAction('CALL');
           }
-          
-          // Bluff-catching: Call with weak hands if bet is small
-          if(totalCallCost <= pot * 0.2 && conservativeness < 0.3) {
-             return handleAction('CALL');
+          if (isDecent) {
+              if (potOdds < 0.35) return handleAction('CALL');
           }
+          if(potOdds < 0.25 && aggression > 0.8) return handleAction('CALL'); // Float a bluff
 
           return handleAction('FOLD');
       } 
-      // 2. NO BET TO CPU (can check or bet)
-      else {
-          // Value betting
-          if (isMonster) {
-              // Slow play monster hands sometimes
-              if (aggression < 0.2 && !boardIsWet) return handleAction('CHECK');
-              const betAmount = Math.min(cpu.mana, Math.max(lastBetSize, Math.ceil(pot * (0.8 + aggression * 0.4)))); // Bet big: 80%-120% pot
-              if (betAmount > 0) return handleAction('BET', { amount: betAmount });
-          }
-          if (isVeryStrong) {
-              const betAmount = Math.min(cpu.mana, Math.max(lastBetSize, Math.ceil(pot * (0.6 + aggression * 0.4)))); // Bet 60-100% pot
-              if (betAmount > 0) return handleAction('BET', { amount: betAmount });
-          }
-          if (isStrong) {
-              if (aggression > 0.4) {
-                const betAmount = Math.min(cpu.mana, Math.max(lastBetSize, Math.ceil(pot * (0.4 + aggression * 0.3)))); // Bet 40-70% pot
-                if (betAmount > 0) return handleAction('BET', { amount: betAmount });
+      else { // Checked to CPU
+          // --- Card Playing Logic ---
+          if (handRank < 3) { // Don't play utility cards if holding a monster hand, bet for value instead
+              const playableCards = cpu.hand
+                  .map((card, index) => ({ card, index }))
+                  .filter(({ card }) => (card.manaCost ?? 0) <= cpu.mana);
+
+              if (playableCards.length > 0) {
+                  let bestCardToPlay: { card: CardData; index: number; score: number } | null = null;
+                  const currentLocationOwner = gs.players.find(p => p.artifacts.some(a => a.id === activeLocation?.id));
+
+                  for (const { card, index } of playableCards) {
+                      let score = 0;
+                      if (card.type === CardType.Location) {
+                          if (!activeLocation || (currentLocationOwner && currentLocationOwner.id !== cpu.id)) score += 50;
+                      }
+                      if (card.type === CardType.Event) {
+                          score += (card.manaCost || 1) * 4; // Simple utility score
+                      }
+                      if (card.type === CardType.Artifact) {
+                          if (card.id === 8) score += 40; // Card draw is high value
+                          else score += 15;
+                      }
+                      score += Math.random() * 5;
+                      if (!bestCardToPlay || score > bestCardToPlay.score) {
+                          bestCardToPlay = { card, index, score };
+                      }
+                  }
+
+                  if (bestCardToPlay && bestCardToPlay.score > 25 && aggression > 0.3) {
+                      return handleAction('PLAY_CARD', { cardIndex: bestCardToPlay.index });
+                  }
               }
           }
 
-          // Semi-bluffing with draws
-          if (isDrawing && aggression > 0.5) {
-              const betAmount = Math.min(cpu.mana, Math.max(lastBetSize, Math.ceil(pot * (0.5 + aggression * 0.3))));
-              if (betAmount > 0) return handleAction('BET', { amount: betAmount });
+          const betValue = (strength: number) => Math.min(cpu.mana, Math.max(lastBetSize * minBetMultiplier, Math.ceil(pot * strength)));
+
+          if (isMonster) {
+              if (aggression < 0.3 && !boardIsWet) return handleAction('CHECK'); // Slow play
+              const amount = betValue(0.8 + aggression * 0.4);
+              if (amount > 0) return handleAction('BET', { amount });
+          }
+          if (isVeryStrong) {
+              const amount = betValue(0.6 + aggression * 0.4);
+              if (amount > 0) return handleAction('BET', { amount });
+          }
+          if (isStrong) {
+              const betChance = cpuHasIntimidate ? 0.4 : 0.5; // More likely to bet with intimidate
+              if (aggression > betChance) {
+                const amount = betValue(0.4 + aggression * 0.3);
+                if (amount > 0) return handleAction('BET', { amount });
+              }
+          }
+
+          // Bluffing on scary boards
+          if (!isDecent && !isDrawing) {
+              const flushDrawOnBoard = Object.values(allSuitCounts).some(c => c >= 3);
+              const straightDrawOnBoard = uniqueRanks.some((r, i) => i > 1 && uniqueRanks[i] - uniqueRanks[i - 2] < 4);
+              if (aggression > 0.8 && (flushDrawOnBoard || straightDrawOnBoard) && phase !== 'PRE_FLOP' && cpu.mana > 0) {
+                  const amount = betValue(0.6);
+                  if(amount > 0) return handleAction('BET', { amount });
+              }
           }
           
-          // Pure bluffing
-          if (!isDecent && !isDrawing && aggression > 0.85 && phase !== 'PRE_FLOP' && cpu.mana > 0) {
-              const betAmount = Math.min(cpu.mana, Math.max(lastBetSize, Math.ceil(pot * 0.5)));
-              if (betAmount > 0) return handleAction('BET', { amount: betAmount });
-          }
-          
+          // Discard logic: find an unplayable expensive card, prioritizing lower rarity
           if (!cpu.hasDiscarded) {
-              let cardToDiscardIndex = -1, maxCost = -1;
+              let cardToDiscard: {index: number, card: CardData} | null = null;
+              const rarityValue: Record<Rarity, number> = { [Rarity.Common]: 1, [Rarity.Uncommon]: 2, [Rarity.Rare]: 3, [Rarity.SuperRare]: 4, [Rarity.Mythic]: 5, [Rarity.Divine]: 6 };
+
               cpu.hand.forEach((card, index) => {
-                  const cost = card.manaCost ?? 0;
-                  if (cost > cpu.mana && cost > maxCost) {
-                      maxCost = cost;
-                      cardToDiscardIndex = index;
+                  if ((card.manaCost ?? 0) > cpu.mana) { // Card is unplayable
+                      if (!cardToDiscard) {
+                          cardToDiscard = {index, card};
+                      } else if ((card.manaCost ?? 0) > (cardToDiscard.card.manaCost ?? 0)) {
+                          cardToDiscard = {index, card};
+                      } else if ((card.manaCost ?? 0) === (cardToDiscard.card.manaCost ?? 0)) {
+                          if (rarityValue[card.rarity] < rarityValue[cardToDiscard.card.rarity]) {
+                               cardToDiscard = {index, card};
+                          }
+                      }
                   }
               });
-              if (cardToDiscardIndex !== -1 && aggression > 0.5) {
-                  return handleAction('DISCARD', { cardIndex: cardToDiscardIndex });
+
+              if (cardToDiscard && aggression > 0.5) {
+                  return handleAction('DISCARD', { cardIndex: cardToDiscard.index });
               }
           }
 

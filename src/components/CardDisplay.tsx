@@ -67,15 +67,15 @@ const HandCard: React.FC<{ card: CardData; onClick?: () => void; isSelected?: bo
     return (
         <div className={`relative group w-full h-full transition-all duration-200 ${playableClasses}`} onClick={onClick}>
           {/* Tooltip */}
-          <div className="absolute bottom-full mb-4 w-64 p-3 bg-brand-surface border-2 border-brand-card rounded-lg shadow-2xl text-xs z-[100] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none -translate-x-1/4">
-              <h4 className="font-bold font-serif text-base text-brand-primary">{card.name}</h4>
-              <p className="italic text-brand-text/80 my-1">"{card.description}"</p>
+          <div className="absolute bottom-full mb-4 w-72 p-4 bg-brand-surface border-2 border-brand-card rounded-lg shadow-2xl z-[100] opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-0 group-hover:delay-500 pointer-events-none -translate-x-1/4">
+              <h4 className="font-bold font-serif text-lg text-brand-primary">{card.name}</h4>
+              <p className="italic text-brand-text/80 my-1 text-sm">"{card.description}"</p>
               {card.abilities && card.abilities.length > 0 && (
                 <div className="mt-2 pt-2 border-t border-brand-card/50 space-y-2">
                     {card.abilities.map((ability, index) => (
                         <div key={index}>
                             <p className="font-bold text-brand-secondary">{ability.name}</p>
-                            <p className="text-brand-text/80 text-[11px]">{ability.description}</p>
+                            <p className="text-brand-text/80 text-xs">{ability.description}</p>
                         </div>
                     ))}
                 </div>
