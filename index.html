@@ -117,6 +117,7 @@
               'card-draw': 'card-draw-animation 0.5s ease-out forwards',
               'lightning-flash': 'lightning-flash 2.5s linear infinite',
               'divine-glow': 'divine-glow 4s ease-in-out infinite',
+              'card-active-glow': 'card-active-glow 2.5s ease-in-out infinite',
             },
             keyframes: {
               'pulse-glow-rare': {
@@ -177,6 +178,10 @@
                 '0%, 100%': { textShadow: '0 0 8px #f59e0b, 0 0 16px #f59e0b, 0 0 24px #8b5cf6' },
                 '50%': { textShadow: '0 0 12px #f59e0b, 0 0 24px #f59e0b, 0 0 36px #8b5cf6' },
               },
+              'card-active-glow': {
+                  '0%, 100%': { filter: 'drop-shadow(0 0 2px var(--color-primary))' },
+                  '50%': { filter: 'drop-shadow(0 0 8px var(--color-primary))' },
+              }
             }
           }
         }

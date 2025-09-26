@@ -1,3 +1,4 @@
+
 import { HandResult } from './lib/poker';
 
 export enum CardType {
@@ -52,6 +53,7 @@ export interface Ability {
   overloadCost?: number; // For Overload
   overloadDescription?: string; // For Overload UI
   abilityToGrant?: Ability; // For Imbue
+  discardsAfterUse?: boolean; // For Scrap-like effects on permanents
 }
 
 
@@ -87,15 +89,22 @@ export interface PlayerState {
   hasMadeBettingActionThisTurn: boolean;
   hasDiscarded: boolean;
   hasPeeked: boolean;
-  hasUsedCrossroadsThisTurn: boolean;
+  hasUsedEconomistThisRound: boolean;
   // New state properties
   manaDebt: number;
   trapCard: { card: CardData; condition: string; } | null;
   activeChronoEffects: { cardName: string; turns: number; description: string, cardId: number }[];
   mulliganed: boolean;
+  wager62Active: boolean;
+  charges: Record<number, number>;
+  cardPlayLocked: boolean;
+  // Flags derived from cards in play
+  hasBulwark: boolean;
+  hasIntimidate: boolean;
+  hasFlux: boolean;
+  hasEconomist: boolean;
   stats: {
     handsPlayed: number;
-    vpip: number; // Voluntarily Put In Pot
   };
 }
 
@@ -122,6 +131,7 @@ export interface GameState {
   winner: PlayerState | null;
   firstPlayerIndexThisRound: 0 | 1;
   lastRoundWinnerId: number | null;
+  spadesRound?: boolean;
   // Betting state
   amountToCall: number;
   lastBettor: number | null;

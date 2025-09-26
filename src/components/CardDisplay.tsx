@@ -1,8 +1,8 @@
 
 import React from 'react';
 import { CardData, Rarity, CardSuit } from '../types';
-import { ManaIcon } from './icons/MagicIcon';
-import { SparklesIcon } from './icons/SparklesIcon';
+import { ManaIcon } from '../../components/icons/MagicIcon';
+import { SparklesIcon } from '../../components/icons/SparklesIcon';
 
 interface CardDisplayProps {
   card: CardData | null;
@@ -11,6 +11,8 @@ interface CardDisplayProps {
   isSelected?: boolean;
   isPlayable?: boolean;
   isInWinningHand?: boolean;
+  hidePokerValue?: boolean;
+  isPlayerTurn?: boolean;
 }
 
 const suitInfo: Record<CardSuit, { symbol: string; color: string }> = {
@@ -36,7 +38,7 @@ const CardBack: React.FC<{onClick?: ()=>void}> = ({onClick}) => (
 );
 
 
-const BoardCard: React.FC<{ card: CardData; isInWinningHand?: boolean }> = ({ card, isInWinningHand }) => {
+const BoardCard: React.FC<{ card: CardData; isInWinningHand?: boolean; hidePokerValue?: boolean; }> = ({ card, isInWinningHand, hidePokerValue }) => {
     const isVideo = card.imageUrl.endsWith('.mp4');
     const rarityStyle = rarityStyles[card.rarity];
     const winningHandClasses = isInWinningHand ? 'ring-4 ring-brand-accent scale-105 shadow-glow-primary' : `${rarityStyle.border} shadow-lg shadow-black/30`;
@@ -50,7 +52,7 @@ const BoardCard: React.FC<{ card: CardData; isInWinningHand?: boolean }> = ({ ca
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent z-10"></div>
             <div className="relative z-20 flex flex-col h-full p-2 justify-end">
                 <h3 className="font-serif text-sm font-bold leading-tight" style={{ textShadow: '0 1px 3px #000' }}>{card.name}</h3>
-                {card.rank && card.suit && (
+                {!hidePokerValue && card.rank && card.suit && (
                     <div className="absolute top-1 left-1 bg-black/50 backdrop-blur-sm rounded-sm px-1.5 py-0.5 text-sm font-bold" style={{ textShadow: '0 1px 2px #000' }}>
                         {card.rank}<span className={suitInfo[card.suit].color}>{suitInfo[card.suit].symbol}</span>
                     </div>
@@ -60,15 +62,17 @@ const BoardCard: React.FC<{ card: CardData; isInWinningHand?: boolean }> = ({ ca
     );
 };
 
-const HandCard: React.FC<{ card: CardData; onClick?: () => void; isSelected?: boolean; isPlayable?: boolean; }> = ({ card, onClick, isSelected, isPlayable = true }) => {
+const HandCard: React.FC<{ card: CardData; onClick?: () => void; isSelected?: boolean; isPlayable?: boolean; isPlayerTurn?: boolean; }> = ({ card, onClick, isSelected, isPlayable = true, isPlayerTurn }) => {
     const isVideo = card.imageUrl.endsWith('.mp4');
     const rarityStyle = rarityStyles[card.rarity];
     const playableClasses = isPlayable ? 'cursor-pointer hover:-translate-y-2' : 'grayscale opacity-70';
+    const activeTurnClasses = isPlayerTurn && isPlayable ? 'animate-card-active-glow' : '';
+
 
     return (
-        <div className={`relative group w-full h-full transition-all duration-200 ${playableClasses}`} onClick={onClick}>
+        <div className={`relative group w-full h-full transition-all duration-200 animate-card-breath ${playableClasses} ${activeTurnClasses}`} onClick={onClick}>
           {/* Tooltip */}
-          <div className="absolute bottom-full mb-4 w-72 p-4 bg-brand-surface border-2 border-brand-card rounded-lg shadow-2xl z-[100] opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-0 group-hover:delay-500 pointer-events-none -translate-x-1/4">
+          <div className="absolute bottom-full mb-4 w-72 p-4 bg-brand-surface border-2 border-brand-card rounded-lg shadow-2xl z-[100] opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-0 group-hover:delay-300 pointer-events-none -translate-x-1/4">
               <h4 className="font-bold font-serif text-lg text-brand-primary">{card.name}</h4>
               <p className="italic text-brand-text/80 my-1 text-sm">"{card.description}"</p>
               {card.abilities && card.abilities.length > 0 && (
@@ -77,6 +81,9 @@ const HandCard: React.FC<{ card: CardData; onClick?: () => void; isSelected?: bo
                         <div key={index}>
                             <p className="font-bold text-brand-secondary">{ability.name}</p>
                             <p className="text-brand-text/80 text-xs">{ability.description}</p>
+                             {ability.overloadDescription && (
+                                <p className="text-brand-text/70 text-xs mt-1"><strong className="text-brand-accent">Overload:</strong> {ability.overloadDescription}</p>
+                            )}
                         </div>
                     ))}
                 </div>
@@ -112,7 +119,7 @@ const HandCard: React.FC<{ card: CardData; onClick?: () => void; isSelected?: bo
 };
 
 
-const CardDisplay: React.FC<CardDisplayProps> = ({ card, displayMode = 'board', onClick, isSelected, isPlayable, isInWinningHand }) => {
+const CardDisplay: React.FC<CardDisplayProps> = ({ card, displayMode = 'board', onClick, isSelected, isPlayable, isInWinningHand, hidePokerValue, isPlayerTurn }) => {
   if (displayMode === 'facedown') {
     return <CardBack onClick={onClick} />;
   }
@@ -122,12 +129,12 @@ const CardDisplay: React.FC<CardDisplayProps> = ({ card, displayMode = 'board', 
   
   switch(displayMode) {
     case 'hand':
-        return <HandCard card={card} onClick={onClick} isSelected={isSelected} isPlayable={isPlayable}/>
+        return <HandCard card={card} onClick={onClick} isSelected={isSelected} isPlayable={isPlayable} isPlayerTurn={isPlayerTurn}/>
     case 'board':
-        return <BoardCard card={card} isInWinningHand={isInWinningHand} />
+        return <BoardCard card={card} isInWinningHand={isInWinningHand} hidePokerValue={hidePokerValue} />
     case 'full': 
     default:
-        return <BoardCard card={card} isInWinningHand={isInWinningHand} />;
+        return <BoardCard card={card} isInWinningHand={isInWinningHand} hidePokerValue={hidePokerValue} />;
   }
 };
 
